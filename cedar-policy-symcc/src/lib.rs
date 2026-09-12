@@ -17,6 +17,7 @@
 #![warn(missing_docs)]
 #![doc = include_str!("../README.md")]
 
+pub mod dnf;
 pub mod err;
 pub mod evaluator;
 mod expr_util;
