@@ -1443,11 +1443,58 @@ fn split_linked_policy_validates_the_instance() {
     let all = split_policy_set(core, &schema, DEFAULT_MAX_SPLIT_NODES, DEFAULT_MAX_CUBES).unwrap();
     assert_eq!(all.policies().count(), 1);
 }
+
+/// The policy entry points validate: an ill-typed policy is rejected by
+/// `split_policy_set`, while `allow_cubes` validates the *combined* permits
+/// (what its Lean theorem assumes), so a forbid no permit environment
+/// reaches — here, any forbid: there is no permit — goes unreported.
+#[test]
+fn policy_entry_points_validate() {
+    let schema = schema();
+    let ill = PolicySet::from_str(
+        r#"forbid(principal, action, resource) when { principal.age == "x" };"#,
+    )
+    .unwrap();
+    assert!(matches!(
+        split_policy_set(
+            ill.as_ref(),
+            &schema,
+            DEFAULT_MAX_SPLIT_NODES,
+            DEFAULT_MAX_CUBES
+        ),
+        Err(DnfError::NotWellTyped { .. })
+    ));
+    let cubes = allow_cubes(
+        ill.as_ref(),
+        &schema,
+        DEFAULT_MAX_SPLIT_NODES,
+        DEFAULT_MAX_CUBES,
+    )
+    .unwrap();
+    assert_eq!(cubes.policies().count(), 0);
+    // reached by a permit, the forbid is typed in the permit's environment
+    let reached = PolicySet::from_str(
+        r#"permit(principal, action, resource) when { principal.active };
+           forbid(principal, action, resource) when { principal.age == "x" };"#,
+    )
+    .unwrap();
+    assert!(matches!(
+        allow_cubes(
+            reached.as_ref(),
+            &schema,
+            DEFAULT_MAX_SPLIT_NODES,
+            DEFAULT_MAX_CUBES
+        ),
+        Err(DnfError::NotWellTyped { .. })
+    ));
+}
+
 // ---------------------------------------------------------------------------
 // Step 3: splitting policies
 
 use cedar_policy::{
-    Authorizer, Context, Decision, Entities, EntityUid, PolicyId, PolicySet, Request, SlotId,
+    Authorizer, Context, Decision, Entities, EntityUid, Policy, PolicyId, PolicySet, Request,
+    SlotId,
 };
 use cedar_policy_core::ast::{Effect, Policy as AstPolicy, PolicyID, PolicySet as AstPolicySet};
 use cedar_policy_symcc::dnf::{split_policy, split_policy_set};
@@ -1942,6 +1989,382 @@ async fn iferror_atoms() {
         .check_equivalent(&t("iferror(e, false)"), &erroring, &view(), no_extra())
         .await
         .unwrap());
+}
+
+// ---------------------------------------------------------------------------
+// Step 4, part 2: combining allow and deny policies into allow-only cubes
+
+use cedar_policy_symcc::dnf::{
+    allow_cubes, combine_allow_deny, deny_witness, DEFAULT_MAX_SPLIT_NODES as MAX_SPLIT,
+};
+
+fn pset(text: &str) -> AstPolicySet {
+    PolicySet::from_str(text).unwrap().as_ref().clone()
+}
+
+fn combined_conditions(pset: &AstPolicySet) -> Vec<(String, Expr)> {
+    let combined = combine_allow_deny(pset).unwrap();
+    let mut out: Vec<(String, Expr)> = combined
+        .policies()
+        .map(|p| {
+            (
+                p.id().to_string(),
+                p.non_scope_constraints().unwrap().clone(),
+            )
+        })
+        .collect();
+    out.sort_by(|a, b| a.0.cmp(&b.0));
+    out
+}
+
+fn cube_conditions(pset: &AstPolicySet) -> Vec<Expr> {
+    let cubes = allow_cubes(pset, &schema(), MAX_SPLIT, DEFAULT_MAX_CUBES).unwrap();
+    let mut out: Vec<(String, Expr)> = cubes
+        .policies()
+        .map(|p| {
+            (
+                p.id().to_string(),
+                p.non_scope_constraints().unwrap().clone(),
+            )
+        })
+        .collect();
+    out.sort_by(|a, b| a.0.cmp(&b.0));
+    out.into_iter().map(|(_, e)| e).collect()
+}
+
+/// `!iferror(d, false)` for a table atom.
+fn nt(atom: &str) -> Expr {
+    t(&format!("!iferror({atom}, false)"))
+}
+
+#[test]
+fn combine_hand_tables() {
+    // one forbid, one conjunct: the README rule
+    let ps = pset(&format!(
+        "permit(principal, action, resource) when {{ {A} }};
+         forbid(principal, action, resource) when {{ {B} }};"
+    ));
+    assert_eq!(
+        combined_conditions(&ps),
+        vec![("policy0".to_string(), Expr::and(t("a"), nt("b")))]
+    );
+    // a two-conjunct forbid: the nested witness
+    let ps = pset(&format!(
+        "permit(principal, action, resource) when {{ {A} }};
+         forbid(principal, action, resource) when {{ {B} && {C} }};"
+    ));
+    assert_eq!(
+        combined_conditions(&ps),
+        vec![(
+            "policy0".to_string(),
+            Expr::and(t("a"), Expr::or(nt("b"), Expr::and(t("b"), nt("c"))))
+        )]
+    );
+    // two forbids, in id order, each contributing its witness
+    let ps = pset(&format!(
+        "permit(principal, action, resource) when {{ {A} }};
+         forbid(principal, action, resource) when {{ {C} }};
+         forbid(principal, action, resource) when {{ {B} }};"
+    ));
+    assert_eq!(
+        combined_conditions(&ps),
+        vec![(
+            "policy0".to_string(),
+            Expr::and(t("a"), Expr::and(nt("c"), nt("b")))
+        )]
+    );
+    // the forbid's scope is part of its chain; `||` inside a conjunct stays one term
+    let ps = pset(&format!(
+        r#"permit(principal, action, resource) when {{ {A} }};
+           forbid(principal == User::"u", action, resource) when {{ {B} || {C} }};"#
+    ));
+    assert_eq!(
+        combined_conditions(&ps),
+        vec![(
+            "policy0".to_string(),
+            Expr::and(
+                t("a"),
+                Expr::or(
+                    nt(r#"principal == User::"u""#),
+                    Expr::and(t(r#"principal == User::"u""#), nt("b || c"))
+                )
+            )
+        )]
+    );
+    // no forbids: the permit is copied; no permits: nothing; a permit without
+    // `when` gets `true` as its condition
+    let ps = pset(&format!(
+        "permit(principal, action, resource) when {{ {A} }};"
+    ));
+    assert_eq!(
+        combined_conditions(&ps),
+        vec![("policy0".to_string(), t("a"))]
+    );
+    let ps = pset(&format!(
+        "forbid(principal, action, resource) when {{ {A} }};"
+    ));
+    assert_eq!(combined_conditions(&ps), vec![]);
+    let ps = pset(&format!(
+        "permit(principal, action, resource);
+         forbid(principal, action, resource) when {{ {B} }};"
+    ));
+    assert_eq!(
+        combined_conditions(&ps),
+        vec![("policy0".to_string(), nt("b"))]
+    );
+    // the witness of an empty chain is `false`, of one conjunct just the test
+    assert_eq!(deny_witness(&[]), t("false"));
+    assert_eq!(deny_witness(&[&t("a")]), nt("a"));
+}
+
+#[test]
+fn combine_cubes() {
+    // `a` allowed unless `b && c`: two cross terms, the second carrying Step
+    // 1's guard literal for the first disjunct
+    let ps = pset(&format!(
+        "permit(principal, action, resource) when {{ {A} }};
+         forbid(principal, action, resource) when {{ {B} && {C} }};"
+    ));
+    let cubes = cube_conditions(&ps);
+    assert_eq!(cubes.len(), 2, "{cubes:?}");
+    for c in &cubes {
+        assert!(atoms_are_clean(c), "{c}");
+    }
+    // every cube is a conjunction of literals with the permit's atom first;
+    // the DNF visits the `||`'s continuation (the first disjunct false, i.e.
+    // `iferror(b, false)` true) before its own true leaf
+    assert_eq!(
+        cubes,
+        vec![
+            Expr::and(
+                Expr::and(Expr::and(t("a"), t("iferror(b, false)")), t("b")),
+                nt("c")
+            ),
+            Expr::and(t("a"), nt("b")),
+        ]
+    );
+}
+
+/// A template-linked forbid contributes its *filled* scope (the template's
+/// slot would render as `?principal`, an unfillable slot), and forbids are
+/// combined in id order whatever their insertion order.
+#[test]
+fn combine_linked_forbid_and_id_order() {
+    let mut original = PolicySet::from_str(&format!(
+        "permit(principal, action, resource) when {{ {A} }};
+         forbid(principal == ?principal, action, resource) when {{ {B} }};"
+    ))
+    .unwrap();
+    original
+        .link(
+            PolicyId::from_str("policy1").unwrap(),
+            PolicyId::from_str("linked").unwrap(),
+            HashMap::from([(
+                SlotId::principal(),
+                EntityUid::from_str(r#"User::"u""#).unwrap(),
+            )]),
+        )
+        .unwrap();
+    let core: &AstPolicySet = original.as_ref();
+    let scope = t(r#"principal == User::"u""#);
+    assert_eq!(
+        combined_conditions(core),
+        vec![(
+            "policy0".to_string(),
+            Expr::and(t("a"), deny_witness(&[&scope, &t("b")]))
+        )]
+    );
+    // the cubes exist and are static
+    let cubes = allow_cubes(core, &schema(), MAX_SPLIT, DEFAULT_MAX_CUBES).unwrap();
+    assert_eq!(cubes.policies().count(), 2);
+    assert!(cubes.policies().all(|p| p.is_static()));
+    // ids out of insertion order: the witnesses follow the ids
+    let mut ps = PolicySet::new();
+    for (id, text) in [
+        (
+            "p",
+            format!("permit(principal, action, resource) when {{ {A} }};"),
+        ),
+        (
+            "z",
+            format!("forbid(principal, action, resource) when {{ {C} }};"),
+        ),
+        (
+            "a",
+            format!("forbid(principal, action, resource) when {{ {B} }};"),
+        ),
+    ] {
+        ps.add(Policy::parse(Some(PolicyId::from_str(id).unwrap()), text).unwrap())
+            .unwrap();
+    }
+    assert_eq!(
+        combined_conditions(ps.as_ref()),
+        vec![(
+            "p".to_string(),
+            Expr::and(t("a"), Expr::and(nt("b"), nt("c")))
+        )]
+    );
+}
+
+/// Three-valued decision of a policy set under an assignment of its atoms.
+fn decision_under(
+    permits: &[Expr],
+    forbids: &[Expr],
+    assignment: &HashMap<Expr, EvaluationOutcome>,
+) -> bool {
+    permits
+        .iter()
+        .any(|p| matches!(interpret_under(p, assignment), T))
+        && !forbids
+            .iter()
+            .any(|f| matches!(interpret_under(f, assignment), T))
+}
+
+#[test]
+fn combine_decision_truth_tables() {
+    // Over every {T,F,E} assignment: the original decision is `allow` iff the
+    // combined permit's condition is true, and iff exactly one allow cube is
+    // true (never more).
+    let leaves = [t("a"), t("c"), t("e")];
+    let mut chains: Vec<Vec<Expr>> = vec![];
+    for l in &leaves {
+        chains.push(vec![l.clone()]);
+        for m in &leaves {
+            chains.push(vec![l.clone(), m.clone()]);
+            for n in &leaves {
+                chains.push(vec![l.clone(), m.clone(), n.clone()]);
+            }
+        }
+    }
+    let and_chain = |ds: &[Expr]| {
+        let mut it = ds.iter().rev();
+        let last = it.next().unwrap().clone();
+        it.fold(last, |acc, d| Expr::and(d.clone(), acc))
+    };
+    let mut checked = 0;
+    for f1 in &chains {
+        for f2 in chains.iter().take(9) {
+            let permit = t("a || (c && e)");
+            let forbids = [and_chain(f1), and_chain(f2)];
+            let ps = pset(&format!(
+                "permit(principal, action, resource) when {{ {} }};
+                 forbid(principal, action, resource) when {{ {} }};
+                 forbid(principal, action, resource) when {{ {} }};",
+                permit, forbids[0], forbids[1]
+            ));
+            let combined: Vec<Expr> = combined_conditions(&ps)
+                .into_iter()
+                .map(|(_, e)| e)
+                .collect();
+            let cubes = cube_conditions(&ps);
+            let mut atoms = Vec::new();
+            atoms_of(&permit, &mut atoms);
+            for f in &forbids {
+                atoms_of(f, &mut atoms);
+            }
+            for assignment in assignments(&atoms, &[T, F, E]) {
+                let allow = decision_under(std::slice::from_ref(&permit), &forbids, &assignment);
+                let combined_true = combined
+                    .iter()
+                    .any(|c| matches!(interpret_under(c, &assignment), T));
+                assert_eq!(
+                    allow, combined_true,
+                    "combined differs under {assignment:?}"
+                );
+                let true_cubes = cubes
+                    .iter()
+                    .filter(|c| matches!(interpret_under(c, &assignment), T))
+                    .count();
+                assert!(
+                    true_cubes <= 1,
+                    "{true_cubes} cubes true under {assignment:?}"
+                );
+                assert_eq!(allow, true_cubes == 1, "cubes differ under {assignment:?}");
+            }
+            checked += 1;
+        }
+    }
+    assert!(checked >= 300, "only {checked} sets checked");
+}
+
+#[tokio::test]
+async fn combine_sets_are_solver_equivalent() {
+    let schema = schema();
+    let mut compiler = CedarSymCompiler::new(LocalSolver::cvc5().unwrap()).unwrap();
+    let sets = [
+        r#"permit(principal, action, resource) when { principal.active };
+           forbid(principal, action, resource) when { resource.protected };"#,
+        // an erroring forbid conjunct, a scoped forbid, two forbids
+        r#"permit(principal == User::"u", action, resource)
+           when { principal.active || principal.name == "x" };
+           forbid(principal, action, resource)
+           when { resource.protected && principal.age + 1 == 19 };
+           forbid(principal, action, resource == Document::"d") when { principal.name == "y" };"#,
+        r#"permit(principal, action, resource);
+           forbid(principal, action, resource) when { principal has flag && principal.flag };"#,
+    ];
+    for text in sets {
+        let original = PolicySet::from_str(text).unwrap();
+        let combined = api_pset(&combine_allow_deny(original.as_ref()).unwrap());
+        let cubes = api_pset(
+            &allow_cubes(original.as_ref(), &schema, MAX_SPLIT, DEFAULT_MAX_CUBES).unwrap(),
+        );
+        let c1 = CompiledPolicySet::compile(&original, &view(), &schema).unwrap();
+        let c2 = CompiledPolicySet::compile(&combined, &view(), &schema).unwrap();
+        let c3 = CompiledPolicySet::compile(&cubes, &view(), &schema).unwrap();
+        assert!(
+            compiler.check_equivalent_opt(&c1, &c2).await.unwrap(),
+            "combining `{text}` changes the authorization behavior"
+        );
+        assert!(
+            compiler.check_equivalent_opt(&c1, &c3).await.unwrap(),
+            "the cubes of `{text}` change the authorization behavior"
+        );
+    }
+}
+
+#[test]
+fn combine_preserves_concrete_decisions() {
+    let schema = schema();
+    let request = authz_request(&schema);
+    let authorizer = Authorizer::new();
+    let original = PolicySet::from_str(
+        r#"permit(principal, action, resource) when { principal.active };
+           forbid(principal, action, resource) when { principal.age + 1 == 19 && principal.name == "x" };"#,
+    )
+    .unwrap();
+    let combined = api_pset(&combine_allow_deny(original.as_ref()).unwrap());
+    let cubes =
+        api_pset(&allow_cubes(original.as_ref(), &schema, MAX_SPLIT, DEFAULT_MAX_CUBES).unwrap());
+    // (active, name, age) → expected decision: an erroring forbid is ignored,
+    // a true one denies, a false one allows, an inactive principal is denied
+    let inputs = [
+        (true, "x", i64::MAX, Decision::Allow), // forbid errors (overflow)
+        (true, "x", 18, Decision::Deny),        // forbid true
+        (true, "y", 18, Decision::Allow),       // forbid false
+        (false, "x", 18, Decision::Deny),       // permit false
+        (false, "x", i64::MAX, Decision::Deny), // permit false, forbid errors
+    ];
+    for (active, name, age, expected) in inputs {
+        let entities = authz_entities(&schema, active, name, age);
+        for (label, set) in [
+            ("original", &original),
+            ("combined", &combined),
+            ("cubes", &cubes),
+        ] {
+            let response = authorizer.is_authorized(&request, set, &entities);
+            assert_eq!(
+                response.decision(),
+                expected,
+                "{label} set on (active={active}, name={name}, age={age})"
+            );
+        }
+        // the combined sets never error where the original's permit does not
+        if active {
+            let after = authorizer.is_authorized(&request, &combined, &entities);
+            assert_eq!(after.diagnostics().errors().count(), 0);
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
