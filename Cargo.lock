@@ -372,6 +372,7 @@ dependencies = [
  "linked_hash_set",
  "miette",
  "nonempty",
+ "nonempty-collections",
  "oorandom",
  "proptest",
  "prost",

@@ -47,6 +47,9 @@ mod tpe;
 #[cfg(feature = "tpe")]
 pub use tpe::*;
 
+mod typechecked;
+pub use typechecked::*;
+
 pub use ast::Effect;
 pub use authorizer::Decision;
 #[cfg(feature = "partial-eval")]
