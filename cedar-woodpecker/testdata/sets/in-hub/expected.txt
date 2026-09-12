@@ -1,0 +1,2 @@
+resource.a in resource.c
+resource.a in resource.d

@@ -1,0 +1,5 @@
+removed: action1 resource1
+context.action1 == Action::"create"
+principal.name == "alice"
+context.resource1.namespace == "foo"
+context.resource1.namespace == resource.namespace

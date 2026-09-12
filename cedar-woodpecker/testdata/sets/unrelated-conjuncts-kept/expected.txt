@@ -1,0 +1,3 @@
+principal.name == "alice"
+resource.a.containsAny(resource.b)
+resource.ns == "foo"

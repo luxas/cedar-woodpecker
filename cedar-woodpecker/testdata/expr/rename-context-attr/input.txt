@@ -1,0 +1,2 @@
+op: rename
+principal.x == context.y

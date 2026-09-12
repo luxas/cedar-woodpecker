@@ -1,0 +1,6 @@
+t
+  principal: User
+  sources: Action::"create" on Pod
+  target: Action::"get" on Secret
+  when: true
+  added: action1, resource1, context1

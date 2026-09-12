@@ -1,0 +1,11 @@
+namespace Core {
+  entity User { name: String };
+  entity Team { name: String };
+  entity Pod { namespace: String };
+  type Ctx = { team: Team, teams: Set<Team> };
+  action create appliesTo { principal: User, resource: Pod };
+}
+namespace Audit {
+  entity Log { tenant: String };
+  action read appliesTo { principal: Core::User, resource: Log, context: Core::Ctx };
+}

@@ -1,0 +1,6 @@
+entity User { name: String };
+entity Pod { namespace: String };
+entity Secret { namespace: String };
+type CreateCtx = { dryRun: Bool, reason?: String };
+action create appliesTo { principal: User, resource: [Pod, Secret], context: CreateCtx };
+action get appliesTo { principal: User, resource: [Pod, Secret] };

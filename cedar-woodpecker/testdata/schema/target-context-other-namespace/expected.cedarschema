@@ -1,0 +1,48 @@
+namespace Audit {
+  entity Log = {
+    tenant: String
+  };
+
+  action "read" appliesTo {
+    principal: [Core::User],
+    resource: [Log],
+    context: {
+      action1: Core::__woodpecker_action1,
+      context1: Core::__woodpecker_context1,
+      resource1: Core::__woodpecker_resource1,
+      team: Core::Team,
+      teams: Set<Core::Team>
+    }
+  };
+}
+
+namespace Core {
+  type Ctx = {
+    team: Team,
+    teams: Set<Team>
+  };
+
+  type __woodpecker_action1 = Action;
+
+  type __woodpecker_context1 = {  };
+
+  type __woodpecker_resource1 = Pod;
+
+  entity Pod = {
+    namespace: String
+  };
+
+  entity Team = {
+    name: String
+  };
+
+  entity User = {
+    name: String
+  };
+
+  action "create" appliesTo {
+    principal: [User],
+    resource: [Pod],
+    context: {}
+  };
+}

@@ -1,0 +1,1 @@
+!(resource.e == resource.f)

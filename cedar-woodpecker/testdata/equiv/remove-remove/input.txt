@@ -1,0 +1,4 @@
+removed: action1 resource1
+context.resource1.a == context.resource1.b
+context.resource1.b == 1
+resource.x == context.resource1.a

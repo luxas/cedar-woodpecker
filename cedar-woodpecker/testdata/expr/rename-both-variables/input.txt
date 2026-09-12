@@ -1,0 +1,2 @@
+op: rename
+resource.namespace == principal.ns && [resource, action].contains(resource) && (if resource has x then {a: action} == context.r else action == Action::"get")

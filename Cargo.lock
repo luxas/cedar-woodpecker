@@ -521,6 +521,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "cedar-woodpecker"
+version = "0.1.0"
+dependencies = [
+ "cedar-policy",
+ "cedar-policy-core",
+ "cedar-policy-symcc",
+ "clap",
+ "miette",
+ "nonempty-collections",
+ "serde",
+ "serde_json",
+ "smol_str",
+ "thiserror",
+ "tokio",
+]
+
+[[package]]
 name = "cfg-if"
 version = "1.0.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"

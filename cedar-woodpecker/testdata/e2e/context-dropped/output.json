@@ -1,0 +1,45 @@
+{
+  "cubes": [
+    {
+      "principal": "User",
+      "action": "Action::\"create\"",
+      "resource": "Pod",
+      "id": "policy0.cube0",
+      "condition": "(principal.name == \"alice\") && (context.dryRun == false) && (resource.namespace == \"foo\")",
+      "outcomes": [
+        "True",
+        "False",
+        "Error"
+      ]
+    }
+  ],
+  "escalations": [
+    {
+      "transition": "pod-create-reads-secrets",
+      "principal": "User",
+      "sources": [
+        {
+          "principal": "User",
+          "action": "Action::\"create\"",
+          "resource": "Pod",
+          "cubes": [
+            "policy0.cube0"
+          ]
+        }
+      ],
+      "target": {
+        "principal": "User",
+        "action": "Action::\"get\"",
+        "resource": "Secret",
+        "cubes": [
+          "woodpecker.pod-create-reads-secrets.cube0"
+        ]
+      },
+      "path_id": "woodpecker.pod-create-reads-secrets.cube0",
+      "path": "(context.action1 == Action::\"create\") && (principal.name == \"alice\") && (context.context1.dryRun == false) && (context.resource1.namespace == \"foo\") && (context.resource1.namespace == resource.namespace)",
+      "policy": "@woodpecker(\"pod-create-reads-secrets: policy0.cube0\")\npermit(\n  principal is User,\n  action == Action::\"get\",\n  resource is Secret\n) when {\n  (principal.name == \"alice\") && (resource.namespace == \"foo\")\n};",
+      "sound": true,
+      "problem": null
+    }
+  ]
+}

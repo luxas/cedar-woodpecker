@@ -1,0 +1,3 @@
+{
+  "error": "transitions: transition `pod-create-reads-secrets`: `when` does not typecheck in (principal: User, action: Action::\"get\", resource: Secret): for policy `woodpecker.pod-create-reads-secrets.when`, unable to guarantee safety of access to optional attribute `context1.reason` in context for Action::\"get\""
+}

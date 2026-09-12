@@ -1,0 +1,8 @@
+entity User { name: String };
+entity Pod { namespace: String };
+type CreateCtx = { tenant: String };
+action create appliesTo { principal: User, resource: Pod, context: CreateCtx };
+namespace Audit {
+  entity Log { tenant: String };
+  action read appliesTo { principal: User, resource: Log };
+}

@@ -1,0 +1,57 @@
+type Ctx = {
+  tenant: String
+};
+
+type __woodpecker_action1 = Action;
+
+type __woodpecker_action2 = Action;
+
+type __woodpecker_context1 = {};
+
+type __woodpecker_context2 = {
+  dry: Bool
+};
+
+type __woodpecker_resource1 = Pod;
+
+type __woodpecker_resource2 = Pod;
+
+entity Pod = {
+  namespace: String
+};
+
+entity Secret = {
+  namespace: String
+};
+
+entity User = {
+  name: String
+};
+
+action "create" appliesTo {
+  principal: [User],
+  resource: [Pod, Secret],
+  context: {}
+};
+
+action "get" appliesTo {
+  principal: [User],
+  resource: [Pod, Secret],
+  context: {
+    action1: __woodpecker_action1,
+    action2: __woodpecker_action2,
+    context1: __woodpecker_context1,
+    context2: __woodpecker_context2,
+    resource1: __woodpecker_resource1,
+    resource2: __woodpecker_resource2,
+    tenant: String
+  }
+};
+
+action "patch" appliesTo {
+  principal: [User],
+  resource: [Pod, Secret],
+  context: {
+    dry: Bool
+  }
+};

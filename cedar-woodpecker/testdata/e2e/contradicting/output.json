@@ -1,0 +1,41 @@
+{
+  "cubes": [
+    {
+      "principal": "User",
+      "action": "Action::\"create\"",
+      "resource": "Pod",
+      "id": "policy1.cube0",
+      "condition": "(principal.name == \"alice\") && principal.groups.contains(\"engineers\") && (resource.namespace == \"foo\")",
+      "outcomes": [
+        "True",
+        "False",
+        "Error"
+      ]
+    },
+    {
+      "principal": "User",
+      "action": "Action::\"create\"",
+      "resource": "Secret",
+      "id": "policy2.cube1",
+      "condition": "principal.groups.contains(\"lucas-not-in-group\")",
+      "outcomes": [
+        "True",
+        "False",
+        "Error"
+      ]
+    },
+    {
+      "principal": "User",
+      "action": "Action::\"patch\"",
+      "resource": "Pod",
+      "id": "policy0.cube2",
+      "condition": "principal.groups.contains(\"engineers\")",
+      "outcomes": [
+        "True",
+        "False",
+        "Error"
+      ]
+    }
+  ],
+  "escalations": []
+}

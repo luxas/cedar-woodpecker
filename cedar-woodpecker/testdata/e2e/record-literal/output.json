@@ -1,0 +1,69 @@
+{
+  "cubes": [
+    {
+      "principal": "User",
+      "action": "Action::\"create\"",
+      "resource": "Pod",
+      "id": "policy1.cube0",
+      "condition": "(principal.name == \"alice\") && principal.groups.contains(\"engineers\") && (resource.namespace == \"foo\")",
+      "outcomes": [
+        "True",
+        "False",
+        "Error"
+      ]
+    },
+    {
+      "principal": "User",
+      "action": "Action::\"create\"",
+      "resource": "Secret",
+      "id": "policy2.cube1",
+      "condition": "principal.groups.contains(\"lucas-not-in-group\")",
+      "outcomes": [
+        "True",
+        "False",
+        "Error"
+      ]
+    },
+    {
+      "principal": "User",
+      "action": "Action::\"patch\"",
+      "resource": "Pod",
+      "id": "policy0.cube2",
+      "condition": "principal.groups.contains(\"engineers\")",
+      "outcomes": [
+        "True",
+        "False",
+        "Error"
+      ]
+    }
+  ],
+  "escalations": [
+    {
+      "transition": "owner",
+      "principal": "User",
+      "sources": [
+        {
+          "principal": "User",
+          "action": "Action::\"create\"",
+          "resource": "Pod",
+          "cubes": [
+            "policy1.cube0"
+          ]
+        }
+      ],
+      "target": {
+        "principal": "User",
+        "action": "Action::\"get\"",
+        "resource": "Secret",
+        "cubes": [
+          "woodpecker.owner.cube0"
+        ]
+      },
+      "path_id": "woodpecker.owner.cube0",
+      "path": "(context.action1 == Action::\"create\") && (principal.name == \"alice\") && principal.groups.contains(\"engineers\") && (context.resource1.namespace == \"foo\") && (context.resource1.meta == {owner: \"alice\"}) && (resource.owner == context.resource1.meta.owner)",
+      "policy": "@woodpecker(\"owner: policy1.cube0\")\npermit(\n  principal is User,\n  action == Action::\"get\",\n  resource is Secret\n) when {\n  (principal.name == \"alice\") && (principal.groups.contains(\"engineers\") && (resource.owner == \"alice\"))\n};",
+      "sound": true,
+      "problem": null
+    }
+  ]
+}

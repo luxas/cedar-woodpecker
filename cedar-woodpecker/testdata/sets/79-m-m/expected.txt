@@ -1,0 +1,1 @@
+resource.a.containsAny(resource.b)

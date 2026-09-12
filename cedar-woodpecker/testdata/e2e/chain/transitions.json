@@ -1,0 +1,22 @@
+{
+  "transitions": [
+    {
+      "name": "chain",
+      "sources": [
+        {
+          "action": "Action::\"create\"",
+          "resource": "Pod"
+        },
+        {
+          "action": "Action::\"patch\"",
+          "resource": "Pod"
+        }
+      ],
+      "target": {
+        "action": "Action::\"get\"",
+        "resource": "Secret"
+      },
+      "when": "context.resource2.namespace == context.resource1.namespace && resource.namespace == context.resource2.namespace"
+    }
+  ]
+}

@@ -1,0 +1,2 @@
+resource.a.contains(context.resource1.x)
+context.resource1.x.isEmpty()

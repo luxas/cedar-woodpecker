@@ -1,0 +1,1 @@
+(context.x.b == context.x) && (principal.b == 1)

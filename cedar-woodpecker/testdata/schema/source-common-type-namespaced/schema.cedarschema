@@ -1,0 +1,10 @@
+namespace Core {
+  entity User { name: String };
+  entity Pod { namespace: String };
+  type CreateCtx = { dryRun: Bool };
+  action create appliesTo { principal: User, resource: Pod, context: CreateCtx };
+}
+namespace Audit {
+  entity Log { namespace: String };
+  action read appliesTo { principal: Core::User, resource: Log };
+}

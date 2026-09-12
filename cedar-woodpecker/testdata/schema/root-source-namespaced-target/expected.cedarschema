@@ -1,0 +1,39 @@
+type CreateCtx = {
+  dryRun: Bool
+};
+
+type __woodpecker_action1 = Action;
+
+type __woodpecker_context1 = CreateCtx;
+
+type __woodpecker_resource1 = Pod;
+
+entity Pod = {
+  namespace: String
+};
+
+entity User = {
+  name: String
+};
+
+action "create" appliesTo {
+  principal: [User],
+  resource: [Pod],
+  context: CreateCtx
+};
+
+namespace Audit {
+  entity Log = {
+    tenant: String
+  };
+
+  action "read" appliesTo {
+    principal: [User],
+    resource: [Log],
+    context: {
+      action1: __woodpecker_action1,
+      context1: __woodpecker_context1,
+      resource1: __woodpecker_resource1
+    }
+  };
+}

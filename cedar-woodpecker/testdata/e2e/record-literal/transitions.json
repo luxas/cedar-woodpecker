@@ -1,0 +1,18 @@
+{
+  "transitions": [
+    {
+      "name": "owner",
+      "sources": [
+        {
+          "action": "Action::\"create\"",
+          "resource": "Pod"
+        }
+      ],
+      "target": {
+        "action": "Action::\"get\"",
+        "resource": "Secret"
+      },
+      "when": "context.resource1.meta == {owner: \"alice\"} && resource.owner == context.resource1.meta.owner"
+    }
+  ]
+}

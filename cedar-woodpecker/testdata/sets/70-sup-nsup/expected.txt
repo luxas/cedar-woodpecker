@@ -1,0 +1,1 @@
+!resource.a.containsAll(resource.b)

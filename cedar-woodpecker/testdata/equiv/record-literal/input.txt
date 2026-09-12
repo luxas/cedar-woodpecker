@@ -1,0 +1,5 @@
+removed: action1 resource1
+context.resource1.meta == {ns: "foo", owner: principal}
+resource.namespace == context.resource1.meta.ns
+context.resource1.meta has owner
+resource.owner == context.resource1.meta.owner

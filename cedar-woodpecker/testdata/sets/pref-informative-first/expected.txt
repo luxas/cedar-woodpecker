@@ -1,0 +1,2 @@
+resource.a.containsAll(resource.c)
+resource.b.containsAll(context.resource1.s)

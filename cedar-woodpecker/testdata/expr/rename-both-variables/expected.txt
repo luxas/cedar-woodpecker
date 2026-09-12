@@ -1,0 +1,1 @@
+(context.resource1.namespace == principal.ns) && [context.resource1, context.action1].contains(context.resource1) && (if context.resource1 has x then {a: context.action1} == context.context1.r else context.action1 == Action::"get")

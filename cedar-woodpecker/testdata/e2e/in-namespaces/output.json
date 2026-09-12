@@ -1,0 +1,45 @@
+{
+  "cubes": [
+    {
+      "principal": "User",
+      "action": "Action::\"create\"",
+      "resource": "Pod",
+      "id": "policy0.cube0",
+      "condition": "resource.ns in Namespace::\"foo\"",
+      "outcomes": [
+        "True",
+        "False",
+        "Error"
+      ]
+    }
+  ],
+  "escalations": [
+    {
+      "transition": "pod-namespace-reaches-secrets",
+      "principal": "User",
+      "sources": [
+        {
+          "principal": "User",
+          "action": "Action::\"create\"",
+          "resource": "Pod",
+          "cubes": [
+            "policy0.cube0"
+          ]
+        }
+      ],
+      "target": {
+        "principal": "User",
+        "action": "Action::\"get\"",
+        "resource": "Secret",
+        "cubes": [
+          "woodpecker.pod-namespace-reaches-secrets.cube0"
+        ]
+      },
+      "path_id": "woodpecker.pod-namespace-reaches-secrets.cube0",
+      "path": "(context.action1 == Action::\"create\") && (context.resource1.ns in Namespace::\"foo\") && (resource.ns in context.resource1.ns)",
+      "policy": "@woodpecker(\"pod-namespace-reaches-secrets: policy0.cube0\")\npermit(\n  principal is User,\n  action == Action::\"get\",\n  resource is Secret\n) when {\n  resource.ns in Namespace::\"foo\"\n};",
+      "sound": true,
+      "problem": null
+    }
+  ]
+}

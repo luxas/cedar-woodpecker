@@ -1,0 +1,4 @@
+op: or_chain
+principal.a
+principal.b
+principal.c

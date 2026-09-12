@@ -1,0 +1,1 @@
+error: schema: cannot extend the schema: no action `delete` in namespace ``

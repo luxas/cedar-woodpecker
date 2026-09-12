@@ -1,0 +1,18 @@
+{
+  "transitions": [
+    {
+      "name": "bar-only",
+      "sources": [
+        {
+          "action": "Action::\"create\"",
+          "resource": "Pod"
+        }
+      ],
+      "target": {
+        "action": "Action::\"get\"",
+        "resource": "Secret"
+      },
+      "when": "context.resource1.namespace == \"bar\""
+    }
+  ]
+}

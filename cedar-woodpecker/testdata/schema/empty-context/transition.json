@@ -1,0 +1,21 @@
+{
+  "transitions": [
+    {
+      "name": "t",
+      "sources": [
+        {
+          "action": "Action::\"create\"",
+          "resource": "Pod"
+        },
+        {
+          "action": "Action::\"patch\"",
+          "resource": "Pod"
+        }
+      ],
+      "target": {
+        "action": "Action::\"create\"",
+        "resource": "Secret"
+      }
+    }
+  ]
+}
