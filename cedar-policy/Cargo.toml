@@ -38,7 +38,10 @@ prost-build = { version = "0.14", optional = true }
 
 [features]
 # by default, enable all Cedar extensions, but not other crate features
-default = ["ipaddr", "decimal", "datetime"]
+# TEMPORARY: `tpe` is on by default while the symbolic-evaluator branch stack is
+# developed and verified, so that the type-aware partial evaluator is compiled and
+# tested by every plain `cargo build`/`cargo test`. To be reverted before a release.
+default = ["ipaddr", "decimal", "datetime", "tpe"]
 
 # Cedar extensions
 ipaddr = ["cedar-policy-core/ipaddr"]

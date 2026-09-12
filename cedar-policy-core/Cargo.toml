@@ -44,7 +44,10 @@ chrono = { version = "0.4.45", optional = true, default-features = false }
 
 [features]
 # by default, enable all Cedar extensions
-default = ["ipaddr", "decimal", "datetime"]
+# TEMPORARY: `tpe` is on by default while the symbolic-evaluator branch stack is
+# developed and verified, so that the type-aware partial evaluator is compiled and
+# tested by every plain `cargo build`/`cargo test`. To be reverted before a release.
+default = ["ipaddr", "decimal", "datetime", "tpe"]
 ipaddr = []
 decimal = []
 datetime = ["dep:chrono"]
