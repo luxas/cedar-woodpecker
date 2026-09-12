@@ -26,6 +26,9 @@ pub use check_parse::*;
 #[cfg(feature = "analyze")]
 mod symcc;
 pub use symcc::*;
+#[cfg(feature = "analyze")]
+mod lint;
+pub use lint::*;
 #[cfg(feature = "tpe")]
 mod tpe;
 pub use tpe::*;
@@ -87,6 +90,23 @@ mod symcc {
     }
 }
 
+#[cfg(not(feature = "analyze"))]
+mod lint {
+    use crate::CedarExitCode;
+    /// Accepts the real command's arguments, so that the message below is
+    /// what the user sees rather than a usage error.
+    #[derive(Debug, clap::Args)]
+    pub struct LintArgs {
+        #[arg(trailing_var_arg = true, allow_hyphen_values = true, hide = true)]
+        pub args: Vec<String>,
+    }
+
+    pub fn lint(_: &LintArgs) -> CedarExitCode {
+        eprintln!("Error: subcommand `lint` is experimental, but this executable was not built with `analyze` experimental feature enabled");
+        CedarExitCode::Failure
+    }
+}
+
 #[derive(Subcommand, Debug)]
 pub enum Commands {
     /// Evaluate an authorization request
@@ -130,6 +150,9 @@ pub enum Commands {
     RunTests(RunTestsArgs),
     /// Symbolic analysis of Cedar policies using SymCC
     Symcc(SymccArgs),
+    /// Report expressions that are statically true, false or an error in every
+    /// request environment, pinpointed with the symbolic evaluator (needs cvc5)
+    Lint(LintArgs),
     /// Print Cedar language version
     LanguageVersion,
     /// Print license and third-party attributions

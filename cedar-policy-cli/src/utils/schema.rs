@@ -44,6 +44,12 @@ pub struct SchemaArgs {
 impl SchemaArgs {
     /// Turn this `SchemaArgs` into the appropriate `Schema` object
     pub(crate) fn get_schema(&self) -> Result<Schema> {
+        self.get_schema_with_source().map(|(_, schema)| schema)
+    }
+
+    /// The schema together with its source text (for what lives in the
+    /// text only, such as annotations)
+    pub(crate) fn get_schema_with_source(&self) -> Result<(String, Schema)> {
         read_schema_from_file(&self.schema_file, self.schema_format)
     }
 }
@@ -66,16 +72,16 @@ impl OptionalSchemaArgs {
         let Some(schema_file) = &self.schema_file else {
             return Ok(None);
         };
-        read_schema_from_file(schema_file, self.schema_format).map(Some)
+        read_schema_from_file(schema_file, self.schema_format).map(|(_, schema)| Some(schema))
     }
 }
 
-fn read_schema_from_file(path: impl AsRef<Path>, format: SchemaFormat) -> Result<Schema> {
+fn read_schema_from_file(path: impl AsRef<Path>, format: SchemaFormat) -> Result<(String, Schema)> {
     let path = path.as_ref();
     let schema_src = read_from_file(path, "schema")?;
-    match format {
+    let schema = match format {
         SchemaFormat::Json => Schema::from_json_str(&schema_src)
-            .wrap_err_with(|| format!("failed to parse schema from file {}", path.display())),
+            .wrap_err_with(|| format!("failed to parse schema from file {}", path.display()))?,
         SchemaFormat::Cedar => {
             let (schema, warnings) = Schema::from_cedarschema_str(&schema_src)
                 .wrap_err_with(|| format!("failed to parse schema from file {}", path.display()))?;
@@ -83,9 +89,10 @@ fn read_schema_from_file(path: impl AsRef<Path>, format: SchemaFormat) -> Result
                 let report = miette::Report::new(warning);
                 eprintln!("{report:?}");
             }
-            Ok(schema)
+            schema
         }
-    }
+    };
+    Ok((schema_src, schema))
 }
 
 #[cfg(test)]

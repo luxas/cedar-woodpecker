@@ -5,6 +5,10 @@ Changes to the Cedar language, which are likely to affect users of the CLI, are 
 
 ## Unreleased
 
+### Added
+
+- `cedar lint` (experimental, `analyze` feature): reports the expressions of a policy set that are statically true, false or an error in every request environment of the schema, pinpointed with the symbolic evaluator under the schema's `@semantics` assumptions; `--json` for editors, `--deny-findings` for CI. Replaces the separate `cedar-symcc-simplify` binary of `cedar-policy-symcc`. Needs cvc5 at runtime.
+
 ## 4.12.0
 
 ### Added
