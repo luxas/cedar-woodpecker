@@ -81,6 +81,7 @@
 //! opaque, indivisible terms, the guards among them.
 
 mod interpret;
+mod like;
 mod paths;
 mod split;
 
@@ -93,6 +94,7 @@ use miette::Diagnostic;
 use thiserror::Error;
 
 pub use interpret::interpret;
+pub use like::{likes_have_wildcards, rewrite_like};
 pub use split::{split_atoms, DEFAULT_MAX_SPLIT_NODES};
 
 /// Default cube budget of [`Dnf::of_expr`]: the number of paths (cubes before

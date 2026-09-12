@@ -1024,3 +1024,124 @@ async fn iferror_atoms() {
         .await
         .unwrap());
 }
+// ---------------------------------------------------------------------------
+// Phase 4 Step 1: `like` without wildcards is `==`
+
+use cedar_policy_core::ast::PatternElem;
+use cedar_policy_symcc::dnf::{likes_have_wildcards, rewrite_like};
+
+/// Hand cases: a wildcard-free pattern becomes an equality (the empty
+/// pattern too), an escaped `\*` is a character, a wildcard is kept, and
+/// the rewrite reaches inside every node kind.
+#[test]
+fn rewrite_like_hand_cases() {
+    let cases = [
+        (
+            r#"principal.name like "alice""#,
+            r#"principal.name == "alice""#,
+        ),
+        (r#"principal.name like """#, r#"principal.name == """#),
+        (
+            r#"principal.name like "a\*b""#,
+            r#"principal.name == "a*b""#,
+        ),
+        (
+            r#"principal.name like "a*b""#,
+            r#"principal.name like "a*b""#,
+        ),
+        (r#"principal.name like "*""#, r#"principal.name like "*""#),
+        (
+            r#"if principal.name like "x" then {a: principal.name like "y"}.a else [principal.name like "z*"].contains(true)"#,
+            r#"if principal.name == "x" then {a: principal.name == "y"}.a else [principal.name like "z*"].contains(true)"#,
+        ),
+        (
+            r#"iferror(principal.name like "x", principal.name like "y") && !(principal.name like "w")"#,
+            r#"iferror(principal.name == "x", principal.name == "y") && !(principal.name == "w")"#,
+        ),
+        (
+            r#"(principal.name like "x") == (principal.name like "*x")"#,
+            r#"(principal.name == "x") == (principal.name like "*x")"#,
+        ),
+    ];
+    for (input, expected) in cases {
+        let rewritten = rewrite_like(&expr(input)).unwrap();
+        assert_eq!(rewritten, expr(expected), "{input}");
+        assert!(likes_have_wildcards(&rewritten), "{input}");
+    }
+    assert!(!likes_have_wildcards(&expr(
+        r#"principal.name like "x" || false"#
+    )));
+    assert!(likes_have_wildcards(&expr(
+        r#"principal.name like "x*" || false"#
+    )));
+}
+
+/// The rewrite is solver-equivalent to its input on well-typed
+/// expressions, and a wildcard-free pattern matches exactly the literal it
+/// becomes under the concrete matcher. (On a non-string *value* `like` is
+/// a type error while `==` is `false`; the rewrite is meant for validated
+/// expressions, whose `like` operands are strings.)
+#[tokio::test]
+async fn rewrite_like_is_equivalent() {
+    let schema = schema();
+    let mut ev = evaluator(&schema);
+    for text in [
+        r#"principal.name like "alice""#,
+        r#"principal.name like """#,
+        r#"principal.name like "a\*b" && principal.active"#,
+        r#"principal.name like "a*b" || principal.name like "c""#,
+        r#"if principal.name like "x" then principal.age > 18 else principal.name like "*""#,
+        r#"iferror(principal.name like "x", false)"#,
+    ] {
+        let input = expr(text);
+        let rewritten = with_default_metadata(&rewrite_like(&input).unwrap()).unwrap();
+        assert!(
+            ev.check_equivalent(&input, &rewritten, &view(), no_extra())
+                .await
+                .unwrap(),
+            "`{rewritten}` is not solver-equivalent to `{input}`"
+        );
+    }
+    // concretely: the same verdict on every string, wildcard or not
+    let pattern = |src: &str| match expr(src).expr_kind() {
+        ExprKind::Like { pattern, .. } => pattern.clone(),
+        _ => panic!("not a like"),
+    };
+    for (src, matches, misses) in [
+        (
+            r#"context.s like "ab""#,
+            vec!["ab"],
+            vec!["", "a", "abc", "ba"],
+        ),
+        (r#"context.s like "a\*b""#, vec!["a*b"], vec!["ab", "axb"]),
+        (
+            r#"context.s like "a*b""#,
+            vec!["ab", "axb", "a**b"],
+            vec!["a", "b", "ba"],
+        ),
+    ] {
+        let p = pattern(src);
+        let wildcard = p.iter().any(|e| matches!(e, PatternElem::Wildcard));
+        for s in matches {
+            assert!(p.wildcard_match(s), "{src} should match {s:?}");
+        }
+        for s in misses {
+            assert!(!p.wildcard_match(s), "{src} should not match {s:?}");
+        }
+        let rewritten = rewrite_like(&expr(src)).unwrap();
+        assert_eq!(
+            matches!(rewritten.expr_kind(), ExprKind::Like { .. }),
+            wildcard,
+            "{src}"
+        );
+        // a wildcard-free pattern matches exactly the literal it becomes
+        if let ExprKind::BinaryApp { arg2, .. } = rewritten.expr_kind() {
+            let ExprKind::Lit(Literal::String(lit)) = arg2.expr_kind() else {
+                panic!("{src}: expected a string literal, got {arg2}");
+            };
+            for s in ["", "a", "ab", "a*b", "axb", "abc", "ba"] {
+                assert_eq!(p.wildcard_match(s), s == lit.as_str(), "{src} on {s:?}");
+            }
+        }
+    }
+}
