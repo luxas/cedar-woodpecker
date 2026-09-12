@@ -80,6 +80,20 @@
 //! `Dnf::of_expr(&split_atoms(&e, n)?)` yields cubes whose literals are
 //! opaque, indivisible terms, the guards among them.
 //!
+//! # Splitting policies (Step 3)
+//!
+//! [`split_policy`] lifts the conversion to whole policies: each true-cube of
+//! the DNF of a policy's `when` condition becomes its own policy with the
+//! same effect and scope. The authorization decision of a policy set depends
+//! only on which policies evaluate to `true` (an erroring policy is ignored,
+//! like a false one), and on any input the original condition is `true` iff
+//! exactly one true-cube is — so replacing a policy by its split
+//! ([`split_policy_set`]) preserves every decision, while never-true cubes,
+//! which exist only to reproduce errors, can be dropped entirely. Only the
+//! diagnostics may differ: where the original policy errors, the split may
+//! contain fewer erroring policies (a dropped never-true cube) or more (cubes
+//! sharing the erroring prefix each error); where it does not error, no split
+//! policy does.
 //! # Eliminating record and set literals (Phase 4, Step 1)
 //!
 //! [`eliminate_aggregates`] rewrites, bottom-up in every atom, the structure
@@ -99,6 +113,7 @@ mod elim;
 mod interpret;
 mod like;
 mod paths;
+mod policy;
 mod split;
 
 use std::fmt;
@@ -112,6 +127,7 @@ use thiserror::Error;
 pub use elim::{eliminate_aggregates, normalize_atoms};
 pub use interpret::interpret;
 pub use like::{likes_have_wildcards, rewrite_like};
+pub use policy::{split_policy, split_policy_set};
 pub use split::{split_atoms, DEFAULT_MAX_SPLIT_NODES};
 
 /// Default cube budget of [`Dnf::of_expr`]: the number of paths (cubes before
