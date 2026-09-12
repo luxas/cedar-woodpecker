@@ -18,8 +18,11 @@
 #![doc = include_str!("../README.md")]
 
 pub mod err;
+pub mod evaluator;
+mod expr_util;
 mod symcc;
 mod symccopt;
+pub mod typechecked; // TODO(luxas): Selective exports
 
 use cedar_policy::{Effect, Policy, PolicySet, RequestEnv, Schema};
 use nonempty::{nonempty, NonEmpty};
@@ -214,6 +217,13 @@ impl CompiledPolicy {
 #[derive(Debug, Clone)]
 pub struct CompiledPolicySet {
     policies: symccopt::CompiledPolicySet,
+}
+
+#[doc(hidden)] // because this converts to a private/internal type
+impl AsRef<symccopt::CompiledPolicySet> for CompiledPolicySet {
+    fn as_ref(&self) -> &symccopt::CompiledPolicySet {
+        &self.policies
+    }
 }
 
 impl CompiledPolicySet {

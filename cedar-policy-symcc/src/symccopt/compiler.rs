@@ -242,6 +242,19 @@ fn compile_app1(op1: UnaryOp, arg: CompileResult) -> Result<CompileResult> {
     }
 }
 
+/// Compiles `!arg` for an `arg` that has already been compiled to an
+/// `Option<Bool>`-typed term, exactly as the `UnaryApp` arm of [`compile`] does
+/// (unwrap with `option_get`, apply `compile_app1`, re-wrap with `if_some`).
+///
+/// Not present in the Lean. Used by the symbolic evaluator, which compiles the
+/// boolean structure of an expression node by node so that every sub-node has
+/// its own term.
+pub fn compile_not(arg: CompileResult) -> Result<CompileResult> {
+    let arg_term = arg.term.clone();
+    let res = compile_app1(UnaryOp::Not, arg.map_term(option_get))?;
+    Ok(res.map_term(|term| if_some(arg_term, term)))
+}
+
 /// In Lean, `compileApp₁` handles this case, but in Rust, `Like` is a separate
 /// `Expr` variant and not part of `UnaryApp`.
 fn compile_like(arg: CompileResult, pat: OrdPattern) -> Result<CompileResult> {

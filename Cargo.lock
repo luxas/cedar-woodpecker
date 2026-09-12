@@ -475,6 +475,7 @@ dependencies = [
  "itertools 0.15.0",
  "miette",
  "nonempty",
+ "nonempty-collections",
  "num-bigint",
  "num-traits",
  "ref-cast",

@@ -19,7 +19,7 @@
 
 use std::collections::BTreeSet;
 
-use crate::symcc::{self, term::Term};
+use crate::symcc::{self, env::SymEntities, term::Term};
 
 use super::{CompiledPolicy, CompiledPolicySet};
 
@@ -77,4 +77,24 @@ pub fn enforce_pair_compiled_policyset(
         .chain(cpset2.acyclicity.iter().cloned())
         .chain(tr)
         .collect()
+}
+
+/// Returns the acyclicity and transitivity constraints for an arbitrary
+/// footprint (a set of option-entity-typed terms), i.e. the n-ary sibling of
+/// `enforce_compiled_policy()` / `enforce_pair_compiled_policy()`.
+///
+/// Callers that combine terms from several compiled expressions in one query
+/// must pass the *union* of their footprints here rather than concatenating
+/// per-expression results: the transitivity constraints range over all pairs,
+/// including cross-expression pairs.
+///
+/// Not present in the Lean. Used by the symbolic evaluator.
+pub(crate) fn enforce_footprint(footprint: &BTreeSet<Term>, es: &SymEntities) -> BTreeSet<Term> {
+    let ac = footprint.iter().map(|t| symcc::enforcer::acyclicity(t, es));
+    let tr = footprint.iter().flat_map(|t1| {
+        footprint
+            .iter()
+            .map(|t2| symcc::enforcer::transitivity(t1, t2, es))
+    });
+    ac.chain(tr).collect()
 }

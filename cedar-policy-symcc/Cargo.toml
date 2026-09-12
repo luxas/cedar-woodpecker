@@ -11,7 +11,7 @@ homepage.workspace = true
 repository.workspace = true
 
 [dependencies]
-cedar-policy = { path = "../cedar-policy", version = "=4.12.0" }
+cedar-policy = { path = "../cedar-policy", version = "=4.12.0", features = ["tpe"] }
 cedar-policy-core = { path = "../cedar-policy-core", version = "=4.12.0" }
 async-recursion = "1.1"
 itertools = "0.15"
@@ -24,6 +24,7 @@ num-traits = "0.2"
 chrono = "0.4.45"
 miette = "7.6.0"
 nonempty = "0.12.0"
+nonempty-collections = "1.4.0"
 
 [dev-dependencies]
 miette = { version = "7.6.0", features = ["fancy"] }

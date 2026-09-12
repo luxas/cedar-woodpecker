@@ -20,8 +20,8 @@
 mod authorizer;
 mod compiled_policies;
 pub use compiled_policies::{CompiledPolicies, CompiledPolicy, CompiledPolicySet};
-mod compiler;
-mod enforcer;
+pub(crate) mod compiler;
+pub(crate) mod enforcer;
 mod extractor;
 mod verifier;
 
