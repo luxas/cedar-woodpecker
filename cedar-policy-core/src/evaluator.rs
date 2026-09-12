@@ -1146,7 +1146,7 @@ impl std::fmt::Debug for Evaluator<'_> {
 impl Value {
     /// Convert the `Value` to a boolean, or throw a type error if it's not a
     /// boolean.
-    pub(crate) fn get_as_bool(&self) -> Result<bool> {
+    pub fn get_as_bool(&self) -> Result<bool> {
         match &self.value {
             ValueKind::Lit(Literal::Bool(b)) => Ok(*b),
             _ => Err(EvaluationError::type_error_single(Type::Bool, self)),
@@ -1210,8 +1210,10 @@ impl Value {
     }
 }
 
+/// Fails with a recursion-limit error when the remaining stack is too small for
+/// another level of evaluation; assumes enough space when it cannot be measured.
 #[inline(always)]
-pub(crate) fn stack_size_check() -> Result<()> {
+pub fn stack_size_check() -> Result<()> {
     // We assume there's enough space if we cannot determine it with `remaining_stack`
     if stacker::remaining_stack().unwrap_or(REQUIRED_STACK_SPACE) < REQUIRED_STACK_SPACE {
         return Err(EvaluationError::recursion_limit(None));
