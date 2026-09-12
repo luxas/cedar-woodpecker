@@ -205,7 +205,7 @@ pub fn symcc(args: &SymccArgs) -> CedarExitCode {
     })
 }
 
-fn initialize_solver(cvc5_path: Option<&PathBuf>) -> Result<LocalSolver> {
+pub(crate) fn initialize_solver(cvc5_path: Option<&PathBuf>) -> Result<LocalSolver> {
     match cvc5_path {
         Some(p) => {
             LocalSolver::from_command(Command::new(p).args(["--lang", "smt", "--tlimit=60000"]))

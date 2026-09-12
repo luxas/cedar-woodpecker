@@ -26,7 +26,7 @@ These are default-feature builds. The `tpe` and `symcc` subcommands are in the e
 
 ### Experimental flavor
 
-A parallel `cedar-policy-cli-experimental-<target>.<ext>` archive is attached to every release. Same `cedar` binary name, built with `tpe` and `analyze` enabled. The `analyze` feature exposes `cedar symcc ...` subcommands for symbolic verification of policies; using them additionally requires the external [cvc5](https://github.com/cvc5/cvc5) SMT solver installed at runtime. Surface area of these features can change between releases; use the regular flavor if stability matters.
+A parallel `cedar-policy-cli-experimental-<target>.<ext>` archive is attached to every release. Same `cedar` binary name, built with `tpe` and `analyze` enabled. The `analyze` feature exposes the `cedar symcc ...` subcommands for symbolic verification of policies and `cedar lint` for the policy simplifier (statically determined expressions); using them additionally requires the external [cvc5](https://github.com/cvc5/cvc5) SMT solver installed at runtime. Surface area of these features can change between releases; use the regular flavor if stability matters.
 
 ### From source
 
