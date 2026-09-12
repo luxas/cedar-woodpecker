@@ -957,6 +957,94 @@ fn split_generated_sweep() {
     }
     assert!(checked > 800, "only {checked} shapes checked");
 }
+
+/// The real evaluator as the oracle for the *exact* claim: the split of a
+/// `when` condition reports the same error as the original, not merely an
+/// error. Each input errs in two places of different kinds — a left sibling
+/// of the hoisted `if` and the hoisted test — and the original reports the
+/// sibling's, which only the guard reproduces.
+#[test]
+fn split_preserves_error_kind() {
+    use cedar_policy::Authorizer;
+    let schema = schema();
+    let policy = |when: &Expr| {
+        PolicySet::from_str(&format!(
+            "permit(principal, action, resource) when {{ {when} }};"
+        ))
+        .unwrap()
+    };
+    let entities = |nick: Option<&str>, age: i64| {
+        let nick = nick.map_or(String::new(), |n| format!(r#""nick": "{n}","#));
+        let json = format!(
+            r#"[
+              {{ "uid": {{ "type": "User", "id": "u" }},
+                 "attrs": {{ "name": "x", "active": true, {nick} "age": {age} }},
+                 "parents": [] }},
+              {{ "uid": {{ "type": "Document", "id": "d" }},
+                 "attrs": {{ "protected": true, "level": 1,
+                             "owner": {{ "__entity": {{ "type": "User", "id": "u" }} }} }},
+                 "parents": [] }}
+            ]"#
+        );
+        Entities::from_json_str(&json, Some(&schema)).unwrap()
+    };
+    // overflow on the left, a missing attribute in the test; and the reverse
+    let inputs = [
+        r#"principal.age + 1 == (if principal.nick == "a" then 1 else 2)"#,
+        r#"principal.nick == (if principal.age + 1 == 3 then "a" else "b")"#,
+    ];
+    // (nick, age): both err, only the sibling errs, only the test errs, neither
+    let stores = [
+        (None, i64::MAX),
+        (None, 1),
+        (Some("a"), i64::MAX),
+        (Some("a"), 1),
+        (Some("b"), 2),
+    ];
+    let authorizer = Authorizer::new();
+    let request = authz_request(&schema);
+    // what the sibling's error says, which must be the one reported
+    let sibling_errors = ["integer overflow", "does not have the attribute `nick`"];
+    let errors = |r: &cedar_policy::Response| {
+        r.diagnostics()
+            .errors()
+            .map(ToString::to_string)
+            .collect::<Vec<_>>()
+    };
+    for (text, sibling_error) in inputs.into_iter().zip(sibling_errors) {
+        let original = expr(text);
+        let split = split_atoms(&original, DEFAULT_MAX_SPLIT_NODES).unwrap();
+        assert_ne!(split, original, "`{text}` should have been split");
+        let (original, split) = (policy(&original), policy(&split));
+        for (nick, age) in stores {
+            let entities = entities(nick, age);
+            let expected = authorizer.is_authorized(&request, &original, &entities);
+            let actual = authorizer.is_authorized(&request, &split, &entities);
+            assert_eq!(
+                expected.decision(),
+                actual.decision(),
+                "`{text}` on {nick:?}, {age}"
+            );
+            assert_eq!(
+                errors(&expected),
+                errors(&actual),
+                "`{text}` on {nick:?}, {age}"
+            );
+        }
+        // the first store errs in both places: the sibling's error must win,
+        // on the split as on the original
+        let reported = errors(&authorizer.is_authorized(
+            &request,
+            &split,
+            &entities(stores[0].0, stores[0].1),
+        ));
+        assert!(
+            reported.len() == 1 && reported.iter().all(|m| m.contains(sibling_error)),
+            "`{text}` should report the sibling's error alone, got {reported:?}"
+        );
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Phase 4, Step 1: eliminating record and set literals
 
@@ -1232,6 +1320,562 @@ fn elim_rejects_ill_typed_input() {
         ));
     }
 }
+
+/// The real evaluator as the oracle for exactness: the normalized condition
+/// reports the same error as the original where a rewritten record's earlier
+/// field errs (the guard) and where the surviving field errs.
+#[test]
+fn elim_preserves_error_kind() {
+    use cedar_policy::Authorizer;
+    let schema = schema();
+    let policy = |when: &Expr| {
+        PolicySet::from_str(&format!(
+            "permit(principal, action, resource) when {{ {when} }};"
+        ))
+        .unwrap()
+    };
+    let entities = |nick: Option<&str>, age: i64| {
+        let nick = nick.map_or(String::new(), |n| format!(r#""nick": "{n}","#));
+        let json = format!(
+            r#"[
+              {{ "uid": {{ "type": "User", "id": "u" }},
+                 "attrs": {{ "name": "x", "active": true, {nick} "age": {age} }},
+                 "parents": [] }},
+              {{ "uid": {{ "type": "Document", "id": "d" }},
+                 "attrs": {{ "protected": true, "level": 1,
+                             "owner": {{ "__entity": {{ "type": "User", "id": "u" }} }} }},
+                 "parents": [] }}
+            ]"#
+        );
+        Entities::from_json_str(&json, Some(&schema)).unwrap()
+    };
+    let authorizer = Authorizer::new();
+    let request = authz_request(&schema);
+    let errors = |r: &cedar_policy::Response| {
+        r.diagnostics()
+            .errors()
+            .map(ToString::to_string)
+            .collect::<Vec<_>>()
+    };
+    // the record's first field overflows; its selected field is the nick —
+    // and a set equality whose literal element overflows, with the other
+    // side's element missing
+    for text in [
+        r#"principal has nick && {a: principal.age + 1, b: principal.nick}.b == "x""#,
+        r#"principal has nick && [principal.age + 1, 2] == [2, if principal.nick == "x" then 3 else 4]"#,
+    ] {
+        let original = expr(text);
+        let normalized =
+            normalize_atoms(&original, &schema, &view(), DEFAULT_MAX_SPLIT_NODES).unwrap();
+        assert_ne!(normalized, original);
+        let (original, normalized) = (policy(&original), policy(&normalized));
+        for (nick, age) in [
+            (Some("x"), i64::MAX),
+            (Some("x"), 1),
+            (Some("y"), 1),
+            (None, 1),
+        ] {
+            let entities = entities(nick, age);
+            let expected = authorizer.is_authorized(&request, &original, &entities);
+            let actual = authorizer.is_authorized(&request, &normalized, &entities);
+            assert_eq!(
+                expected.decision(),
+                actual.decision(),
+                "`{text}` on {nick:?}, {age}"
+            );
+            assert_eq!(
+                errors(&expected),
+                errors(&actual),
+                "`{text}` on {nick:?}, {age}"
+            );
+        }
+        // the overflow of the dropped or reordered subterm is the error reported
+        let reported = errors(&authorizer.is_authorized(
+            &request,
+            &normalized,
+            &entities(Some("x"), i64::MAX),
+        ));
+        assert!(
+            reported.len() == 1 && reported.iter().all(|m| m.contains("integer overflow")),
+            "`{text}`: {reported:?}"
+        );
+    }
+}
+
+/// A template-linked policy is validated as the static policy it splits
+/// into, not as its template: here the template's `principal.level` would
+/// not type against the `Robot` principals `view` also applies to, but the
+/// link fixes the principal to a `User`.
+#[test]
+fn split_linked_policy_validates_the_instance() {
+    let schema = schema_from_cedarstr(
+        r#"
+        entity Group;
+        entity User in [Group] { level: Long };
+        entity Robot { tag: String };
+        entity Doc;
+        action view appliesTo { principal: [User, Robot], resource: Doc };
+        "#,
+    );
+    let mut pset = PolicySet::new();
+    let template = cedar_policy::Template::from_str(
+        r#"permit(principal == ?principal, action, resource) when { principal.level > 1 };"#,
+    )
+    .unwrap()
+    .new_id(PolicyId::new("t"));
+    pset.add_template(template).unwrap();
+    pset.link(
+        PolicyId::new("t"),
+        PolicyId::new("l"),
+        [(
+            SlotId::principal(),
+            EntityUid::from_str(r#"User::"u""#).unwrap(),
+        )]
+        .into(),
+    )
+    .unwrap();
+    let core = pset.as_ref();
+    let linked = core.get(&PolicyID::from_string("l")).unwrap();
+    let split = split_policy(linked, &schema, DEFAULT_MAX_SPLIT_NODES, DEFAULT_MAX_CUBES).unwrap();
+    assert_eq!(split.len(), 1, "{split:?}");
+    // the whole set, template included, splits too: the unlinked template is
+    // neither validated nor carried over
+    let all = split_policy_set(core, &schema, DEFAULT_MAX_SPLIT_NODES, DEFAULT_MAX_CUBES).unwrap();
+    assert_eq!(all.policies().count(), 1);
+}
+// ---------------------------------------------------------------------------
+// Step 3: splitting policies
+
+use cedar_policy::{
+    Authorizer, Context, Decision, Entities, EntityUid, PolicyId, PolicySet, Request, SlotId,
+};
+use cedar_policy_core::ast::{Effect, Policy as AstPolicy, PolicyID, PolicySet as AstPolicySet};
+use cedar_policy_symcc::dnf::{split_policy, split_policy_set};
+use cedar_policy_symcc::CompiledPolicySet;
+
+/// A scope-free policy with `when` as its condition.
+fn when_policy(effect: Effect, id: &str, when: Expr) -> AstPolicy {
+    AstPolicy::from_when_clause(effect, when, PolicyID::from_string(id), None)
+}
+
+fn split_default(policy: &AstPolicy) -> Vec<AstPolicy> {
+    split_policy(
+        policy,
+        &schema(),
+        DEFAULT_MAX_SPLIT_NODES,
+        DEFAULT_MAX_CUBES,
+    )
+    .unwrap()
+}
+
+fn conditions(policies: &[AstPolicy]) -> Vec<Expr> {
+    policies
+        .iter()
+        .map(|p| p.non_scope_constraints().unwrap().clone())
+        .collect()
+}
+
+/// Renders an AST policy set back into an api one (ids are reassigned; only
+/// the tests' decision and solver comparisons use this, and they ignore ids).
+fn api_pset(pset: &AstPolicySet) -> PolicySet {
+    let text = pset
+        .policies()
+        .map(|p| p.to_string())
+        .collect::<Vec<_>>()
+        .join("\n");
+    PolicySet::from_str(&text).unwrap()
+}
+
+fn split_set_default(pset: &AstPolicySet) -> AstPolicySet {
+    split_policy_set(pset, &schema(), DEFAULT_MAX_SPLIT_NODES, DEFAULT_MAX_CUBES).unwrap()
+}
+
+#[test]
+fn split_policy_readme_rule() {
+    // The README's Step 3 claim: `a || b` becomes the policies `a` and `!a && b`.
+    let split = split_default(&when_policy(Effect::Permit, "p", t("a || b")));
+    assert_eq!(conditions(&split), vec![t("a"), t("!a && b")]);
+    assert_eq!(
+        split.iter().map(|p| p.id().to_string()).collect::<Vec<_>>(),
+        ["p.cube0", "p.cube1"]
+    );
+    assert!(split.iter().all(|p| p.effect() == Effect::Permit));
+
+    // The same split with effect Forbid: the argument applies to deny policies.
+    let split = split_default(&when_policy(Effect::Forbid, "p", t("a || b")));
+    assert_eq!(conditions(&split), vec![t("a"), t("!a && b")]);
+    assert!(split.iter().all(|p| p.effect() == Effect::Forbid));
+}
+
+#[test]
+fn split_policy_worked_example() {
+    // The Step 2 worked example as a policy: atoms are split first, then each
+    // cube becomes a policy.
+    let (input, _, _) = *split_table().first().unwrap();
+    let split = split_default(&when_policy(Effect::Permit, "p", normalize(input)));
+    assert_eq!(
+        conditions(&split),
+        vec![
+            normalize(r#"a && b && c && Document::"d1".level == 1"#),
+            normalize(r#"a && b && !c && Document::"d2".level == 1"#),
+            normalize(r#"a && !b && Document::"d2".level == 1"#),
+        ]
+    );
+}
+
+#[test]
+fn split_policy_preserves_scope_and_annotations() {
+    let api = PolicySet::from_str(
+        r#"@origin("here")
+        forbid(principal == User::"u", action, resource)
+        when { principal.active || resource.protected };"#,
+    )
+    .unwrap();
+    let core: &AstPolicySet = api.as_ref();
+    let policy = core.policies().next().unwrap();
+    let split = split_default(policy);
+    assert_eq!(conditions(&split), vec![t("a"), t("!a && c")]);
+    for p in &split {
+        assert_eq!(p.effect(), Effect::Forbid);
+        assert_eq!(p.principal_constraint(), policy.principal_constraint());
+        assert_eq!(p.action_constraint(), policy.action_constraint());
+        assert_eq!(p.resource_constraint(), policy.resource_constraint());
+        assert_eq!(
+            p.annotations()
+                .map(|(k, v)| (k.clone(), v.clone()))
+                .collect::<Vec<_>>(),
+            policy
+                .annotations()
+                .map(|(k, v)| (k.clone(), v.clone()))
+                .collect::<Vec<_>>()
+        );
+    }
+}
+
+#[test]
+fn split_policy_edge_cases() {
+    // A never-true condition: the policy vanishes.
+    assert!(split_default(&when_policy(Effect::Permit, "p", t("false"))).is_empty());
+    assert!(split_default(&when_policy(Effect::Permit, "p", t("a && false"))).is_empty());
+    // A trivial condition: one policy, `when { true }`.
+    let split = split_default(&when_policy(Effect::Permit, "p", t("true")));
+    assert_eq!(conditions(&split), vec![t("true")]);
+    // Duplicate literals dedup inside the cube.
+    let split = split_default(&when_policy(Effect::Permit, "p", t("a && (b && a)")));
+    assert_eq!(conditions(&split), vec![t("a && b")]);
+    // An empty set splits into an empty set.
+    assert_eq!(
+        split_set_default(&AstPolicySet::new()).policies().count(),
+        0
+    );
+}
+
+#[test]
+fn split_policy_scope_only_unless_and_action() {
+    // A scope-only policy (`non_scope_constraints` is `None`): one policy,
+    // `when { true }`.
+    let api = PolicySet::from_str("permit(principal, action, resource);").unwrap();
+    let split = split_default(api.as_ref().policies().next().unwrap());
+    assert_eq!(conditions(&split), vec![t("true")]);
+
+    // An `unless` clause is `!(…)` inside the non-scope constraints.
+    let api = PolicySet::from_str(
+        "permit(principal, action, resource)
+         when { principal.active } unless { resource.protected };",
+    )
+    .unwrap();
+    let split = split_default(api.as_ref().policies().next().unwrap());
+    assert_eq!(conditions(&split), vec![t("a && !c")]);
+
+    // A non-`Any` action constraint survives the split.
+    let api = PolicySet::from_str(
+        r#"permit(principal, action == Action::"view", resource)
+           when { principal.active || resource.protected };"#,
+    )
+    .unwrap();
+    let policy = api.as_ref().policies().next().unwrap();
+    let split = split_default(policy);
+    assert_eq!(conditions(&split), vec![t("a"), t("!a && c")]);
+    for p in &split {
+        assert_eq!(p.action_constraint(), policy.action_constraint());
+    }
+}
+
+#[test]
+fn split_policy_budgets() {
+    let policy = when_policy(Effect::Permit, "p", clauses(13));
+    assert_eq!(
+        split_policy(
+            &policy,
+            &schema(),
+            DEFAULT_MAX_SPLIT_NODES,
+            DEFAULT_MAX_CUBES
+        )
+        .unwrap_err(),
+        DnfError::TooLarge {
+            limit: DEFAULT_MAX_CUBES,
+            what: "cubes"
+        }
+    );
+    let (input, _, _) = *split_table().first().unwrap();
+    let policy = when_policy(Effect::Permit, "p", normalize(input));
+    assert_eq!(
+        split_policy(&policy, &schema(), 10, DEFAULT_MAX_CUBES).unwrap_err(),
+        DnfError::TooLarge {
+            limit: 10,
+            what: "atom nodes"
+        }
+    );
+}
+
+#[test]
+fn split_policy_set_ids_cannot_collide() {
+    // `id ↦ id + ".cube" + i` is injective, so even adversarial input ids
+    // (one policy named like another's split) produce distinct ids.
+    let mut pset = AstPolicySet::new();
+    pset.add(when_policy(Effect::Permit, "p", t("a || b")))
+        .unwrap();
+    pset.add(when_policy(Effect::Permit, "p.cube0", t("c")))
+        .unwrap();
+    let split = split_set_default(&pset);
+    let mut ids: Vec<String> = split.policies().map(|p| p.id().to_string()).collect();
+    ids.sort();
+    assert_eq!(ids, ["p.cube0", "p.cube0.cube0", "p.cube1"]);
+}
+
+#[test]
+fn split_policies_decision_truth_tables() {
+    // Decision preservation at the truth-table level, over every {T,F,E}
+    // assignment: the original condition is true iff exactly one split
+    // policy's condition is true — and never more than one (the decision of a
+    // policy set is a function of which policies are true).
+    let mut inputs: Vec<Expr> = rule_table().iter().map(|(input, _)| t(input)).collect();
+    let leaves = [t("a"), t("c"), t("e"), t("true"), t("false")];
+    for exprs in &shapes(4, &leaves) {
+        inputs.extend(exprs.iter().cloned());
+    }
+    let mut checked = 0;
+    for input in &inputs {
+        let split = split_default(&when_policy(Effect::Permit, "p", input.clone()));
+        let conds = conditions(&split);
+        let mut atoms = Vec::new();
+        atoms_of(input, &mut atoms);
+        for assignment in assignments(&atoms, &[T, F, E]) {
+            let original_true = matches!(interpret_under(input, &assignment), T);
+            let true_conds = conds
+                .iter()
+                .filter(|c| matches!(interpret_under(c, &assignment), T))
+                .count();
+            assert!(
+                true_conds <= 1,
+                "{true_conds} split policies true at once for `{input}`"
+            );
+            assert_eq!(
+                original_true,
+                true_conds == 1,
+                "decision differs for `{input}` under {assignment:?}"
+            );
+        }
+        checked += 1;
+    }
+    assert!(checked > 300, "only {checked} conditions checked");
+}
+
+#[tokio::test]
+async fn split_policy_sets_are_solver_equivalent() {
+    // The strongest oracle: symcc's authorization-behavior equivalence of the
+    // original and the split policy set, over all well-formed inputs
+    // (erroring policies included — they are ignored like false ones).
+    let schema = schema();
+    let mut compiler = CedarSymCompiler::new(LocalSolver::cvc5().unwrap()).unwrap();
+    let sets = [
+        r#"permit(principal, action, resource)
+           when { (principal.active || principal.name == "x") && resource.protected };"#,
+        // a forbid with an atom that can error (overflow), next to a permit
+        r#"permit(principal == User::"u", action, resource)
+           when { principal.active || principal.name == "x" };
+           forbid(principal, action, resource)
+           when { resource.protected && principal.age + 1 == 19 };"#,
+    ];
+    for text in sets {
+        let original = PolicySet::from_str(text).unwrap();
+        let split = api_pset(&split_set_default(original.as_ref()));
+        let c1 = CompiledPolicySet::compile(&original, &view(), &schema).unwrap();
+        let c2 = CompiledPolicySet::compile(&split, &view(), &schema).unwrap();
+        assert!(
+            compiler.check_equivalent_opt(&c1, &c2).await.unwrap(),
+            "split of `{text}` changes the authorization behavior"
+        );
+    }
+}
+
+#[tokio::test]
+async fn split_linked_policies() {
+    // A template-linked policy splits into static policies: the scope
+    // constraints carry the filled slot values.
+    let schema = schema();
+    let mut original = PolicySet::from_str(
+        r#"permit(principal == ?principal, action, resource)
+           when { principal.active || resource.protected };"#,
+    )
+    .unwrap();
+    original
+        .link(
+            PolicyId::from_str("policy0").unwrap(),
+            PolicyId::from_str("linked").unwrap(),
+            HashMap::from([(
+                SlotId::principal(),
+                EntityUid::from_str(r#"User::"u""#).unwrap(),
+            )]),
+        )
+        .unwrap();
+    let core: &AstPolicySet = original.as_ref();
+    let split = split_set_default(core);
+    let mut ids: Vec<String> = split.policies().map(|p| p.id().to_string()).collect();
+    ids.sort();
+    assert_eq!(ids, ["linked.cube0", "linked.cube1"]);
+    let linked = core.policies().next().unwrap();
+    for p in split.policies() {
+        assert_eq!(p.principal_constraint(), linked.principal_constraint());
+        assert!(p.is_static());
+    }
+    // A link filling both slots.
+    let mut both = PolicySet::from_str(
+        r#"permit(principal == ?principal, action, resource == ?resource)
+           when { principal.active };"#,
+    )
+    .unwrap();
+    both.link(
+        PolicyId::from_str("policy0").unwrap(),
+        PolicyId::from_str("linked2").unwrap(),
+        HashMap::from([
+            (
+                SlotId::principal(),
+                EntityUid::from_str(r#"User::"u""#).unwrap(),
+            ),
+            (
+                SlotId::resource(),
+                EntityUid::from_str(r#"Document::"d""#).unwrap(),
+            ),
+        ]),
+    )
+    .unwrap();
+    let core: &AstPolicySet = both.as_ref();
+    let linked2 = core.policies().next().unwrap();
+    let split2 = split_set_default(core);
+    assert_eq!(split2.policies().count(), 1);
+    let p = split2.policies().next().unwrap();
+    assert!(p.is_static());
+    assert_eq!(p.principal_constraint(), linked2.principal_constraint());
+    assert_eq!(p.resource_constraint(), linked2.resource_constraint());
+    // symcc cannot compile template-linked policy sets ("template-linked
+    // policies are not supported"), so the solver comparison runs against the
+    // static equivalent of the link — which the split itself now is, making
+    // the linked set symcc-checkable in the first place.
+    let static_equivalent = PolicySet::from_str(
+        r#"permit(principal == User::"u", action, resource)
+           when { principal.active || resource.protected };"#,
+    )
+    .unwrap();
+    let mut compiler = CedarSymCompiler::new(LocalSolver::cvc5().unwrap()).unwrap();
+    let c1 = CompiledPolicySet::compile(&static_equivalent, &view(), &schema).unwrap();
+    let c2 = CompiledPolicySet::compile(&api_pset(&split), &view(), &schema).unwrap();
+    assert!(compiler.check_equivalent_opt(&c1, &c2).await.unwrap());
+}
+
+/// Entities for the authorizer tests: one user, one document.
+fn authz_entities(schema: &Schema, active: bool, name: &str, age: i64) -> Entities {
+    let json = format!(
+        r#"[
+          {{ "uid": {{ "type": "User", "id": "u" }},
+             "attrs": {{ "name": "{name}", "active": {active}, "age": {age} }},
+             "parents": [] }},
+          {{ "uid": {{ "type": "Document", "id": "d" }},
+             "attrs": {{ "protected": true, "level": 1,
+                         "owner": {{ "__entity": {{ "type": "User", "id": "u" }} }} }},
+             "parents": [] }}
+        ]"#
+    );
+    Entities::from_json_str(&json, Some(schema)).unwrap()
+}
+
+fn authz_request(schema: &Schema) -> Request {
+    Request::new(
+        EntityUid::from_str(r#"User::"u""#).unwrap(),
+        EntityUid::from_str(r#"Action::"view""#).unwrap(),
+        EntityUid::from_str(r#"Document::"d""#).unwrap(),
+        Context::empty(),
+        Some(schema),
+    )
+    .unwrap()
+}
+
+#[test]
+fn split_policy_set_preserves_concrete_decisions() {
+    // The real authorizer as the oracle, error semantics included: an
+    // erroring policy is ignored, and dropped never-true cubes only remove
+    // diagnostics, never change the decision.
+    let schema = schema();
+    let request = authz_request(&schema);
+    let authorizer = Authorizer::new();
+
+    // A forbid that always errors or is false: the original errors on this
+    // input (age overflows) and is ignored; the split drops it entirely.
+    let original = PolicySet::from_str(
+        r#"permit(principal, action, resource) when { principal.active };
+           forbid(principal, action, resource) when { (principal.age + 1 == 19) && false };"#,
+    )
+    .unwrap();
+    let split = api_pset(&split_set_default(original.as_ref()));
+    let entities = authz_entities(&schema, true, "x", i64::MAX);
+    let before = authorizer.is_authorized(&request, &original, &entities);
+    let after = authorizer.is_authorized(&request, &split, &entities);
+    assert_eq!(before.decision(), Decision::Allow);
+    assert_eq!(after.decision(), Decision::Allow);
+    // The documented difference: the erroring never-true forbid is gone from
+    // the diagnostics.
+    assert_eq!(before.diagnostics().errors().count(), 1);
+    assert_eq!(after.diagnostics().errors().count(), 0);
+
+    // The reverse diagnostics direction: cubes sharing an erroring prefix
+    // each error, so one diagnostic becomes two — same decision.
+    let original = PolicySet::from_str(
+        r#"permit(principal, action, resource) when { principal.active };
+           forbid(principal, action, resource)
+           when { (principal.age + 1 == 19) && (principal.active || principal.name == "x") };"#,
+    )
+    .unwrap();
+    let split = api_pset(&split_set_default(original.as_ref()));
+    let entities = authz_entities(&schema, true, "x", i64::MAX);
+    let before = authorizer.is_authorized(&request, &original, &entities);
+    let after = authorizer.is_authorized(&request, &split, &entities);
+    assert_eq!(before.decision(), Decision::Allow);
+    assert_eq!(after.decision(), Decision::Allow);
+    assert_eq!(before.diagnostics().errors().count(), 1);
+    assert_eq!(after.diagnostics().errors().count(), 2);
+
+    // A forbid whose second cube fires: both sides deny; and an input where
+    // no forbid fires: both sides allow.
+    let original = PolicySet::from_str(
+        r#"permit(principal, action, resource);
+           forbid(principal, action, resource)
+           when { principal.active || principal.name == "x" };"#,
+    )
+    .unwrap();
+    let split = api_pset(&split_set_default(original.as_ref()));
+    for (active, name, expected) in [
+        (false, "x", Decision::Deny),
+        (true, "y", Decision::Deny),
+        (false, "y", Decision::Allow),
+    ] {
+        let entities = authz_entities(&schema, active, name, 30);
+        let before = authorizer.is_authorized(&request, &original, &entities);
+        let after = authorizer.is_authorized(&request, &split, &entities);
+        assert_eq!(before.decision(), expected, "active={active} name={name}");
+        assert_eq!(after.decision(), expected, "active={active} name={name}");
+    }
+}
+
 /// `iferror` in the DNF pipeline: an `iferror` call is an atom (its root is
 /// not `&&`/`||`/`!`/`if`) that the splitter never looks inside, structure
 /// *around* it is hoisted as usual, and the results are solver-equivalent
@@ -1299,6 +1943,7 @@ async fn iferror_atoms() {
         .await
         .unwrap());
 }
+
 // ---------------------------------------------------------------------------
 // Phase 4 Step 1: `like` without wildcards is `==`
 
