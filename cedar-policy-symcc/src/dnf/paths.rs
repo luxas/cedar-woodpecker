@@ -24,7 +24,7 @@ use cedar_policy_core::ast::{Expr, ExprKind, Literal as AstLiteral, UnaryOp};
 use cedar_policy_core::evaluator::stack_size_check;
 
 use super::{Cube, DnfError, Literal};
-use crate::expr_util::{erase, RebuildError};
+use crate::expr_util::erase;
 
 /// Where a path ends.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -163,7 +163,7 @@ pub(super) fn paths<T: Clone>(expr: &Expr<T>, max_cubes: usize) -> Result<Vec<Pa
             too_large(out)
         }
         _ => {
-            let key = erase(expr).map_err(rebuild_err)?;
+            let key = erase(expr).map_err(super::split::rebuild_err)?;
             let lit = |negated| Literal {
                 atom: Arc::new(expr.clone()),
                 key: key.clone(),
@@ -237,12 +237,4 @@ pub(super) fn prune<T: Clone>(
         });
     }
     cubes
-}
-
-/// Maps a rebuild error into the DNF error space.
-fn rebuild_err(e: RebuildError) -> DnfError {
-    match e {
-        RebuildError::Unsupported(what) => DnfError::Unsupported(what),
-        RebuildError::RecursionLimit => DnfError::RecursionLimit,
-    }
 }

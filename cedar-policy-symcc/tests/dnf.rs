@@ -540,3 +540,487 @@ fn cube_budget() {
     assert_eq!(dnf.true_cubes().count(), 8);
     assert_truth_table(&clauses(3), &dnf.to_expr(), &[T, F, E]);
 }
+
+// ---------------------------------------------------------------------------
+// Step 2: splitting atoms
+
+use cedar_policy_symcc::dnf::{split_atoms, DEFAULT_MAX_SPLIT_NODES};
+
+/// Whether `e` is a boolean structure over clean atoms: no atom contains any
+/// `&&`/`||`/`!`/`if` node.
+fn atoms_are_clean(e: &Expr) -> bool {
+    fn is_offender(e: &Expr) -> bool {
+        matches!(
+            e.expr_kind(),
+            ExprKind::And { .. }
+                | ExprKind::Or { .. }
+                | ExprKind::If { .. }
+                | ExprKind::UnaryApp {
+                    op: UnaryOp::Not,
+                    ..
+                }
+        )
+    }
+    match e.expr_kind() {
+        ExprKind::Lit(Literal::Bool(_)) => true,
+        ExprKind::UnaryApp {
+            op: UnaryOp::Not,
+            arg,
+        } => atoms_are_clean(arg),
+        ExprKind::And { left, right } | ExprKind::Or { left, right } => {
+            atoms_are_clean(left) && atoms_are_clean(right)
+        }
+        ExprKind::If {
+            test_expr,
+            then_expr,
+            else_expr,
+        } => atoms_are_clean(test_expr) && atoms_are_clean(then_expr) && atoms_are_clean(else_expr),
+        _ => e
+            .subexpressions()
+            .skip(1)
+            .all(|s| !is_offender(s) || under_iferror(e, s)),
+    }
+}
+
+/// Whether `node` lies inside an `iferror(…)` call of `e` (which the splitter
+/// never looks into, see `split_atoms`).
+fn under_iferror(e: &Expr, node: &Expr) -> bool {
+    e.subexpressions()
+        .filter(|s| {
+            matches!(s.expr_kind(), ExprKind::ExtensionFunctionApp { fn_name, .. }
+                if fn_name.to_string() == "iferror")
+        })
+        .any(|call| call.subexpressions().skip(1).any(|s| std::ptr::eq(s, node)))
+}
+
+/// Splits `input`, asserts the exact result, that its atoms are clean, and
+/// that its DNF is `expected_dnf`; returns the split expression.
+#[track_caller]
+fn assert_split(input: &Expr, expected: &Expr, expected_dnf: &Expr) -> Expr {
+    let split = split_atoms(input, DEFAULT_MAX_SPLIT_NODES).unwrap();
+    assert_eq!(
+        split, *expected,
+        "expected split `{expected}` for `{input}`, got `{split}`"
+    );
+    assert!(atoms_are_clean(&split), "`{split}` has unclean atoms");
+    let dnf = Dnf::of_expr(&split).unwrap();
+    assert_eq!(
+        dnf.to_expr(),
+        *expected_dnf,
+        "expected DNF `{expected_dnf}` for split `{split}`, got `{dnf}`"
+    );
+    assert!(atoms_are_clean(&dnf.to_expr()));
+    split
+}
+
+/// The split table: (input, split form, DNF of the split form). Atom names as
+/// in `t()`; the examples use error-free atoms so the DNFs stay small.
+fn split_table() -> Vec<(&'static str, &'static str, &'static str)> {
+    vec![
+        // the README's worked example, adapted to the test schema
+        (
+            r#"a && (if b && c then Document::"d1" else Document::"d2").level == 1"#,
+            r#"a && (if b && c then Document::"d1".level == 1 else Document::"d2".level == 1)"#,
+            r#"(a && b && c && Document::"d1".level == 1)
+               || (a && b && !c && Document::"d2".level == 1)
+               || (a && !b && Document::"d2".level == 1)"#,
+        ),
+        // an `if` under `==`; both branches fold (`1 == 3`, `2 == 3` are literal equalities)
+        (
+            "(if c then 1 else 2) == 3",
+            "if c then false else false",
+            "c && false",
+        ),
+        // boolean structure under `==`, other operand left alone
+        (
+            "(a && c) == principal.active",
+            "if a && c then true == principal.active else false == principal.active",
+            "(a && c && true == principal.active)
+             || (a && !c && false == principal.active)
+             || (!a && false == principal.active)",
+        ),
+        // the README's `x == y ⇒ (x && y) || (!x && !y)`, derived from hoisting + folding
+        (
+            "(a && c) == (b || principal.age == 1)",
+            "if a && c then (if b || principal.age == 1 then true else false)
+             else (if b || principal.age == 1 then false else true)",
+            "(a && c && b) || (a && c && !b && principal.age == 1)
+             || (a && !c && !b && !(principal.age == 1))
+             || (!a && !b && !(principal.age == 1))",
+        ),
+        (
+            "!a == b",
+            "if !a then true == b else false == b",
+            "(a && false == b) || (!a && true == b)",
+        ),
+        // an `if` operand of `==` is hoisted like any other (it may be of
+        // any type); the equalities survive
+        (
+            "(if c then a else b) == principal.active",
+            "if c then a == principal.active else b == principal.active",
+            "(c && a == principal.active) || (!c && b == principal.active)",
+        ),
+        // deeper structure inside an `==` operand is hoisted too
+        (
+            "[a && c].contains(b) == principal.active",
+            "if a && c then [true].contains(b) == principal.active
+             else [false].contains(b) == principal.active",
+            "(a && c && [true].contains(b) == principal.active)
+             || (a && !c && [false].contains(b) == principal.active)
+             || (!a && [false].contains(b) == principal.active)",
+        ),
+        // boolean structure inside a set literal — the case `==` alone misses
+        (
+            "[a && c].contains(b)",
+            "if a && c then [true].contains(b) else [false].contains(b)",
+            "(a && c && [true].contains(b)) || (a && !c && [false].contains(b))
+             || (!a && [false].contains(b))",
+        ),
+        // a hoisted test that is itself an `if`, staying at structure position
+        (
+            "(if (if c then a else false) then 1 else 2) == 1",
+            "if (if c then a else false) then true else false",
+            "c && a",
+        ),
+        // clean atoms come back unchanged
+        (
+            "a && (b || !(principal.age == 1))",
+            "a && (b || !(principal.age == 1))",
+            "(a && b) || (a && !b && !(principal.age == 1))",
+        ),
+        // a left sibling: `principal.age` is evaluated before the hoisted
+        // test, so its error must surface first — the guard `age == age`
+        (
+            "principal.age == (if c then 1 else 2)",
+            "if principal.age == principal.age
+             then (if c then principal.age == 1 else principal.age == 2) else false",
+            "(principal.age == principal.age && c && principal.age == 1)
+             || (principal.age == principal.age && !c && principal.age == 2)",
+        ),
+        // left siblings at two levels, outer first: `level`, then `age`
+        (
+            "resource.level < principal.age + (if c then 1 else 2)",
+            "if resource.level == resource.level && principal.age == principal.age
+             then (if c then resource.level < principal.age + 1
+                   else resource.level < principal.age + 2) else false",
+            "(resource.level == resource.level && principal.age == principal.age && c
+              && resource.level < principal.age + 1)
+             || (resource.level == resource.level && principal.age == principal.age && !c
+              && resource.level < principal.age + 2)",
+        ),
+        // literal and variable siblings never err and get no guard
+        (
+            "[1, principal.age, if c then 2 else 3].contains(resource.level)",
+            "if principal.age == principal.age
+             then (if c then [1, principal.age, 2].contains(resource.level)
+                   else [1, principal.age, 3].contains(resource.level)) else false",
+            "(principal.age == principal.age && c && [1, principal.age, 2].contains(resource.level))
+             || (principal.age == principal.age && !c
+              && [1, principal.age, 3].contains(resource.level))",
+        ),
+        (
+            "[principal, resource.owner, if c then principal else resource.owner].contains(principal)",
+            "if resource.owner == resource.owner
+             then (if c then [principal, resource.owner, principal].contains(principal)
+                   else [principal, resource.owner, resource.owner].contains(principal)) else false",
+            "(resource.owner == resource.owner && c
+              && [principal, resource.owner, principal].contains(principal))
+             || (resource.owner == resource.owner && !c
+              && [principal, resource.owner, resource.owner].contains(principal))",
+        ),
+        // a left sibling that never errs by itself (`==`) contributes its
+        // operands' guards, not its own
+        (
+            "(principal.age == 1) == (if a && b then true else false)",
+            "if principal.age == principal.age
+             then (if a && b then (principal.age == 1) == true else (principal.age == 1) == false)
+             else false",
+            "(principal.age == principal.age && a && b && (principal.age == 1) == true)
+             || (principal.age == principal.age && a && !b && (principal.age == 1) == false)
+             || (principal.age == principal.age && !a && (principal.age == 1) == false)",
+        ),
+        // an `if` operand on the right: the left operand is guarded
+        (
+            "resource.protected == (if a && b then true else false)",
+            "if resource.protected == resource.protected
+             then (if a && b then resource.protected == true else resource.protected == false)
+             else false",
+            "(resource.protected == resource.protected && a && b && resource.protected == true)
+             || (resource.protected == resource.protected && a && !b
+              && resource.protected == false)
+             || (resource.protected == resource.protected && !a && resource.protected == false)",
+        ),
+        // an opaque `iferror` call as the left sibling is guarded like any atom
+        (
+            "iferror(e, false) == (if a && b then true else false)",
+            "if iferror(e, false) == iferror(e, false)
+             then (if a && b then iferror(e, false) == true else iferror(e, false) == false)
+             else false",
+            "(iferror(e, false) == iferror(e, false) && a && b && iferror(e, false) == true)
+             || (iferror(e, false) == iferror(e, false) && a && !b
+              && iferror(e, false) == false)
+             || (iferror(e, false) == iferror(e, false) && !a && iferror(e, false) == false)",
+        ),
+        // the split of a substituted atom re-derives the guard; the DNF's
+        // literal dedup keeps it once per cube
+        (
+            "principal.age == (if c then (if a then 1 else 2) else 3)",
+            "if principal.age == principal.age
+             then (if c then (if a then principal.age == 1 else principal.age == 2)
+                   else principal.age == 3)
+             else false",
+            "(principal.age == principal.age && c && a && principal.age == 1)
+             || (principal.age == principal.age && c && !a && principal.age == 2)
+             || (principal.age == principal.age && !c && principal.age == 3)",
+        ),
+        // siblings that cannot err get no guard: a set literal of literals …
+        (
+            r#"["admin", "root"].contains(if c then principal.name else "guest")"#,
+            r#"if c then ["admin", "root"].contains(principal.name)
+               else ["admin", "root"].contains("guest")"#,
+            r#"(c && ["admin", "root"].contains(principal.name))
+               || (!c && ["admin", "root"].contains("guest"))"#,
+        ),
+        // … and a literal equality an earlier substitution produced (`1 == 1`)
+        (
+            "((if c then 1 else 2) == 1) == (if b || a then true else false)",
+            "if c then (if b || a then true else false) else (if b || a then false else true)",
+            "(c && b) || (c && !b && a) || (!c && !b && !a)",
+        ),
+        // a set or record literal sibling never errs by itself: its elements
+        // are the guards
+        (
+            "[principal.age, 7].containsAll(if c then [1] else [2])",
+            "if principal.age == principal.age
+             then (if c then [principal.age, 7].containsAll([1])
+                   else [principal.age, 7].containsAll([2])) else false",
+            "(principal.age == principal.age && c && [principal.age, 7].containsAll([1]))
+             || (principal.age == principal.age && !c && [principal.age, 7].containsAll([2]))",
+        ),
+        // a guard established by the left operand of `&&` (or the test of an
+        // `if`) is known inside the right operand (the then branch)
+        (
+            "principal.age == principal.age && principal.age == (if c then 1 else 2)",
+            "principal.age == principal.age
+             && (if c then principal.age == 1 else principal.age == 2)",
+            "(principal.age == principal.age && c && principal.age == 1)
+             || (principal.age == principal.age && !c && principal.age == 2)",
+        ),
+        (
+            "if principal.age == principal.age then principal.age == (if c then 1 else 2) else b",
+            "if principal.age == principal.age
+             then (if c then principal.age == 1 else principal.age == 2) else b",
+            "(principal.age == principal.age && c && principal.age == 1)
+             || (principal.age == principal.age && !c && principal.age == 2)
+             || (!(principal.age == principal.age) && b)",
+        ),
+    ]
+}
+
+fn normalize(text: &str) -> Expr {
+    t(&text.split_whitespace().collect::<Vec<_>>().join(" "))
+}
+
+#[test]
+fn split_tables() {
+    for (input, split, dnf) in split_table() {
+        assert_split(&normalize(input), &normalize(split), &normalize(dnf));
+    }
+}
+
+#[tokio::test]
+async fn split_tables_are_solver_equivalent() {
+    let schema = schema();
+    let mut ev = evaluator(&schema);
+    for (input, _, _) in split_table() {
+        let input = normalize(input);
+        let split = split_atoms(&input, DEFAULT_MAX_SPLIT_NODES).unwrap();
+        let annotated = with_default_metadata(&split).unwrap();
+        assert!(
+            ev.check_equivalent(&input, &annotated, &view(), no_extra())
+                .await
+                .unwrap(),
+            "split `{split}` is not solver-equivalent to `{input}`"
+        );
+        let dnf = Dnf::of_expr(&split).unwrap();
+        assert_equivalent(&mut ev, &input, &dnf).await;
+    }
+}
+
+#[tokio::test]
+async fn split_evaluate_dnf_pipeline() {
+    // The README's "use the symbolic evaluator to guide the splitting",
+    // decoupled: split first, evaluate the split expression (dead branches
+    // fold, atoms get exact outcome sets), then convert with the metadata.
+    let schema = schema();
+    let mut ev = evaluator(&schema);
+    ev.assume_expr(expr("resource.protected"));
+    let (input, _, _) = *split_table().first().unwrap(); // c is `resource.protected`
+    let input = normalize(input);
+    let split = split_atoms(&input, DEFAULT_MAX_SPLIT_NODES).unwrap();
+    let evaluated = ev.evaluate(&split, &view(), no_extra()).await.unwrap();
+    let dnf = Dnf::of(&evaluated, can_error_by_metadata, DEFAULT_MAX_CUBES).unwrap();
+    // Of the three cubes, the `b && !c` one is dead under the assumption.
+    assert_eq!(dnf.true_cubes().count(), 2, "got `{dnf}`");
+    assert_eq!(
+        dnf.to_expr(),
+        normalize(
+            r#"(a && b && Document::"d1".level == 1) || (a && !b && Document::"d2".level == 1)"#
+        ),
+        "got `{dnf}`"
+    );
+    let annotated = with_default_metadata(&dnf.to_expr()).unwrap();
+    assert!(ev
+        .check_equivalent(&input, &annotated, &view(), no_extra())
+        .await
+        .unwrap());
+}
+
+#[test]
+fn split_budget() {
+    let (input, _, _) = *split_table().first().unwrap();
+    let input = normalize(input);
+    assert_eq!(
+        split_atoms(&input, 10).unwrap_err(),
+        DnfError::TooLarge {
+            limit: 10,
+            what: "atom nodes"
+        }
+    );
+    split_atoms(&input, DEFAULT_MAX_SPLIT_NODES).unwrap();
+}
+
+#[test]
+fn split_generated_sweep() {
+    // Embed every small boolean structure S in two atom templates and check
+    // the split against the structural reference semantics of the template:
+    //   (if S then 1 else 2) == 1        ~ interpret(S)   (1 == 1 / 2 == 1 fold)
+    //   principal.age == (if S then 1 else 2)
+    //                                    ~ S=T ⇒ atom `age == 1`, S=F ⇒ `age == 2`
+    let leaves = [t("a"), t("c"), t("true"), t("false")];
+    let by_size = shapes(5, &leaves);
+    let eq1 = expr("principal.age == 1");
+    let eq2 = expr("principal.age == 2");
+    let guard = expr("principal.age == principal.age");
+    let mut checked = 0;
+    for exprs in &by_size {
+        for s in exprs {
+            let node = |kind| ExprBuilder::new().with_expr_kind(kind);
+            let ite = node(ExprKind::If {
+                test_expr: Arc::new(s.clone()),
+                then_expr: Arc::new(expr("1")),
+                else_expr: Arc::new(expr("2")),
+            });
+            let t1 = node(ExprKind::BinaryApp {
+                op: cedar_policy_core::ast::BinaryOp::Eq,
+                arg1: Arc::new(ite.clone()),
+                arg2: Arc::new(expr("1")),
+            });
+            let t2 = node(ExprKind::BinaryApp {
+                op: cedar_policy_core::ast::BinaryOp::Eq,
+                arg1: Arc::new(expr("principal.age")),
+                arg2: Arc::new(ite),
+            });
+            let split1 = split_atoms(&t1, DEFAULT_MAX_SPLIT_NODES).unwrap();
+            let split2 = split_atoms(&t2, DEFAULT_MAX_SPLIT_NODES).unwrap();
+            assert!(atoms_are_clean(&split1), "unclean `{split1}` from `{t1}`");
+            assert!(atoms_are_clean(&split2), "unclean `{split2}` from `{t2}`");
+            // `principal.age` is a left sibling of the `if` in `t2`, so its
+            // split is guarded by `age == age` — an atom that is never false.
+            let atoms = vec![t("a"), t("c"), eq1.clone(), eq2.clone(), guard.clone()];
+            for assignment in assignments(&atoms, &[T, F, E]) {
+                if assignment.get(&guard) == Some(&F) {
+                    continue;
+                }
+                let s_outcome = interpret_under(s, &assignment);
+                // (if S then 1 else 2) == 1 evaluates like S itself.
+                assert_eq!(
+                    interpret_under(&split1, &assignment),
+                    s_outcome,
+                    "`{split1}` vs `{s}`"
+                );
+                // principal.age == (if S then 1 else 2) errs where `age` does,
+                // and otherwise picks one equality atom.
+                let expected = match (assignment.get(&guard).unwrap(), &s_outcome) {
+                    (E, _) | (_, E) => EvaluationOutcome::Error,
+                    (_, T) => assignment.get(&eq1).unwrap().clone(),
+                    (_, F) => assignment.get(&eq2).unwrap().clone(),
+                };
+                assert_eq!(
+                    interpret_under(&split2, &assignment),
+                    expected,
+                    "`{split2}` vs `{t2}`"
+                );
+            }
+            checked += 1;
+        }
+    }
+    assert!(checked > 800, "only {checked} shapes checked");
+}
+/// `iferror` in the DNF pipeline: an `iferror` call is an atom (its root is
+/// not `&&`/`||`/`!`/`if`) that the splitter never looks inside, structure
+/// *around* it is hoisted as usual, and the results are solver-equivalent
+/// to the originals.
+/// Also the two laws part 2 of Step 4 rests on: `iferror(e, false)` never
+/// errors, and it agrees with `e` wherever `e` does not error.
+#[tokio::test]
+async fn iferror_atoms() {
+    let schema = schema();
+    let mut ev = evaluator(&schema);
+
+    // an atom: the DNF keeps it opaque
+    let e = t("iferror(e, false) || a");
+    let dnf = Dnf::of_expr(&e).unwrap();
+    assert_eq!(dnf.cubes().len(), 2);
+    assert!(dnf.cubes().iter().all(|c| !c.is_never_true()));
+    assert_equivalent(&mut ev, &e, &dnf).await;
+
+    // an `iferror` call is opaque: the structure inside it is *not* hoisted
+    // (that would move `e`'s error outside the coalescing scope —
+    // `if (a && e) then … else …` errors where `iferror(a && e, false)` is
+    // `false`), so the split is the identity and its atoms count as clean
+    let split = split_atoms(&t("iferror(a && e, false)"), DEFAULT_MAX_SPLIT_NODES).unwrap();
+    assert_eq!(split, t("iferror(a && e, false)"));
+    assert!(atoms_are_clean(&split), "{split}");
+    // ... while structure *around* an `iferror` call is hoisted as usual
+    let split = split_atoms(&t("(a && b) == iferror(e, false)"), DEFAULT_MAX_SPLIT_NODES).unwrap();
+    assert_eq!(
+        split,
+        t("if (a && b) then true == iferror(e, false) else false == iferror(e, false)")
+    );
+    assert!(atoms_are_clean(&split), "{split}");
+    assert!(ev
+        .check_equivalent(
+            &t("(a && b) == iferror(e, false)"),
+            &with_default_metadata(&split).unwrap(),
+            &view(),
+            no_extra()
+        )
+        .await
+        .unwrap());
+
+    // never errors: `iferror(e, false) || !iferror(e, false)` is `true`
+    let always = with_default_metadata(&expr("true")).unwrap();
+    assert!(ev
+        .check_equivalent(
+            &t("iferror(e, false) || !iferror(e, false)"),
+            &always,
+            &view(),
+            no_extra()
+        )
+        .await
+        .unwrap());
+
+    // agrees with `e` where `e` does not error
+    let plain = with_default_metadata(&t("a")).unwrap();
+    assert!(ev
+        .check_equivalent(&t("iferror(a, false)"), &plain, &view(), no_extra())
+        .await
+        .unwrap());
+    // ... and differs from `e` in general: `iferror(e, false)` is not `e`
+    let erroring = with_default_metadata(&t("e")).unwrap();
+    assert!(!ev
+        .check_equivalent(&t("iferror(e, false)"), &erroring, &view(), no_extra())
+        .await
+        .unwrap());
+}

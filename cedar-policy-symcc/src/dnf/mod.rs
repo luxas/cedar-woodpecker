@@ -64,9 +64,25 @@
 //!
 //! DNF is exponential in general; [`Dnf::of`] fails with
 //! [`DnfError::TooLarge`] rather than exceeding a cube budget.
+//!
+//! # Splitting atoms (Step 2)
+//!
+//! An atom may hide boolean structure inside: an `if` at any position
+//! (`(if c then x else y).field == "s"`), or a boolean `&&`/`||`/`!` under an
+//! `==`, a set or a record literal. [`split_atoms`] hoists those out first,
+//! so that afterwards no atom contains any `&&`/`||`/`!`/`if` node outside an
+//! `iferror(…)` call (which is opaque: it catches its argument's error, so
+//! nothing may be hoisted out of it), preserving evaluation exactly — the
+//! hoisted `if` is guarded by `g == g` for the left siblings `g` of the
+//! hoisted node, so their errors still surface first; see its documentation
+//! for the construction and the strictness-and-purity argument for its
+//! soundness. Splitting composes with the conversion:
+//! `Dnf::of_expr(&split_atoms(&e, n)?)` yields cubes whose literals are
+//! opaque, indivisible terms, the guards among them.
 
 mod interpret;
 mod paths;
+mod split;
 
 use std::fmt;
 use std::sync::Arc;
@@ -77,6 +93,7 @@ use miette::Diagnostic;
 use thiserror::Error;
 
 pub use interpret::interpret;
+pub use split::{split_atoms, DEFAULT_MAX_SPLIT_NODES};
 
 /// Default cube budget of [`Dnf::of_expr`]: the number of paths (cubes before
 /// pruning) after which conversion fails with [`DnfError::TooLarge`].
@@ -85,7 +102,8 @@ pub const DEFAULT_MAX_CUBES: usize = 4096;
 /// Errors of the DNF conversion.
 #[derive(Debug, Clone, PartialEq, Eq, Diagnostic, Error)]
 pub enum DnfError {
-    /// The conversion would exceed its budget of cubes.
+    /// The conversion would exceed its budget: cubes for [`Dnf::of`], atom
+    /// nodes for [`split_atoms`].
     #[error("the conversion would exceed its budget of {limit} {what}")]
     TooLarge {
         /// The budget that was exceeded.
@@ -271,4 +289,41 @@ fn and(left: Expr, right: Expr) -> Expr {
         left: Arc::new(left),
         right: Arc::new(right),
     })
+}
+
+/// `d₁ && (d₂ && …)`, nested right — the shape the Lean model's chains have,
+/// so the DRT compares structurally; the empty chain is `true`.
+fn and_chain(ds: impl DoubleEndedIterator<Item = Expr>) -> Expr {
+    ds.rev()
+        .reduce(|acc, d| and(d, acc))
+        .unwrap_or_else(|| bool_lit(true))
+}
+
+/// The `&&`-spine of `e`, left to right, without `true` literals: `(a && b) && c`
+/// and `a && (b && c)` both give `[a, b, c]`; anything else is a single conjunct
+/// (an unconstrained scope renders as `true`; `true && x` is `x`).
+pub fn conjuncts(e: &Expr) -> Vec<&Expr> {
+    spine(e, true)
+}
+
+/// The `||`-spine of `e`, left to right, without `false` literals.
+fn disjuncts(e: &Expr) -> Vec<&Expr> {
+    spine(e, false)
+}
+
+/// The `&&`-spine (`and`) or `||`-spine of `e`, without its unit literal.
+fn spine(e: &Expr, and: bool) -> Vec<&Expr> {
+    fn go<'a>(e: &'a Expr, and: bool, out: &mut Vec<&'a Expr>) {
+        match (and, e.expr_kind()) {
+            (true, ExprKind::And { left, right }) | (false, ExprKind::Or { left, right }) => {
+                go(left, and, out);
+                go(right, and, out);
+            }
+            (_, ExprKind::Lit(AstLiteral::Bool(b))) if *b == and => {}
+            _ => out.push(e),
+        }
+    }
+    let mut out = Vec::new();
+    go(e, and, &mut out);
+    out
 }
