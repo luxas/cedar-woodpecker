@@ -108,6 +108,16 @@
 mod assume;
 mod compile;
 
+/// Typechecks a bare expression in a request environment the way the
+/// evaluator does (see `compile::typecheck`), for the DNF pipeline's
+/// well-typed-input check.
+pub(crate) fn typecheck_expr(
+    expr: &Expr,
+    req_env: &RequestEnv,
+    schema: &Schema,
+) -> Result<Arc<Expr<Option<cedar_policy_core::validator::types::Type>>>> {
+    compile::typecheck(expr, req_env, schema)
+}
 pub mod err;
 
 use std::collections::{BTreeSet, HashMap};
