@@ -21,6 +21,7 @@ pub mod err;
 pub mod evaluator;
 mod expr_util;
 pub mod semantics;
+pub mod simplify;
 mod symcc;
 mod symccopt;
 pub mod typechecked; // TODO(luxas): Selective exports

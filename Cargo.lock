@@ -480,6 +480,8 @@ dependencies = [
  "num-traits",
  "ref-cast",
  "rstest",
+ "serde",
+ "serde_json",
  "smol_str",
  "thiserror",
  "tokio",
