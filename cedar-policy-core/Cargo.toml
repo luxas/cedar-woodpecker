@@ -41,6 +41,7 @@ wasm-bindgen = { version = "0.2.97", optional = true }
 
 # datetime extension requires chrono
 chrono = { version = "0.4.45", optional = true, default-features = false }
+nonempty-collections = "1.4.0"
 
 [features]
 # by default, enable all Cedar extensions
