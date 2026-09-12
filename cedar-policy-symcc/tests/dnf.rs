@@ -957,6 +957,281 @@ fn split_generated_sweep() {
     }
     assert!(checked > 800, "only {checked} shapes checked");
 }
+// ---------------------------------------------------------------------------
+// Phase 4, Step 1: eliminating record and set literals
+
+use cedar_policy_symcc::dnf::{eliminate_aggregates, normalize_atoms};
+
+/// Whether `e` is free of the literals [`eliminate_aggregates`] removes:
+/// no record literal under `.attr`, `has` or `==` (both sides), no set
+/// literal under `contains` (left), `containsAll` (right), `containsAny`
+/// (either side), `==` (either side), `isEmpty` or `in` (right) — outside
+/// opaque atoms.
+fn eliminated(e: &Expr) -> bool {
+    e.subexpressions().all(|s| {
+        // inside an opaque atom (an `iferror` call) the second split does
+        // not look, and neither does this
+        under_iferror(e, s) || {
+            let is_record = |x: &Expr| matches!(x.expr_kind(), ExprKind::Record(_));
+            let is_set = |x: &Expr| matches!(x.expr_kind(), ExprKind::Set(_));
+            match s.expr_kind() {
+                ExprKind::GetAttr { expr, .. } | ExprKind::HasAttr { expr, .. } => !is_record(expr),
+                ExprKind::UnaryApp {
+                    op: UnaryOp::IsEmpty,
+                    arg,
+                } => !is_set(arg),
+                ExprKind::BinaryApp { op, arg1, arg2 } => match op {
+                    cedar_policy_core::ast::BinaryOp::Eq => {
+                        !(is_record(arg1) && is_record(arg2)) && !is_set(arg1) && !is_set(arg2)
+                    }
+                    cedar_policy_core::ast::BinaryOp::Contains => !is_set(arg1),
+                    cedar_policy_core::ast::BinaryOp::ContainsAll
+                    | cedar_policy_core::ast::BinaryOp::In => !is_set(arg2),
+                    cedar_policy_core::ast::BinaryOp::ContainsAny => !is_set(arg1) && !is_set(arg2),
+                    _ => true,
+                },
+                _ => true,
+            }
+        }
+    })
+}
+
+/// The elimination table: (input, normalized form). Every row is checked
+/// exactly, for elimination-freedom and cleanliness, and against the input
+/// with the solver.
+fn elim_table() -> Vec<(&'static str, &'static str)> {
+    vec![
+        // `.attr` on a record literal: the field, guarded by every field
+        (
+            "{x: principal.age, y: principal.name}.x == 3",
+            "if principal.age == principal.age && principal.name == principal.name
+             then principal.age == 3 else false",
+        ),
+        // nested records; a guard the term evaluates first anyway is dropped
+        ("{x: {y: principal.age}}.x.y == 1", "principal.age == 1"),
+        // `has` on a record literal is decided; a literal field needs no guard
+        ("{x: 1} has x", "true"),
+        ("{x: 1} has y || a", "false || a"),
+        // record equality, key by key
+        (
+            "{x: principal.age, y: 1} == {x: 3, y: 1}",
+            "principal.age == 3 && true",
+        ),
+        // a set literal's `contains` is a disjunction of equalities, whose
+        // first disjunct evaluates the guards in their order: no wrapper
+        (
+            r#"[principal.name, "x"].contains(resource.owner.name)"#,
+            r#"principal.name == resource.owner.name || "x" == resource.owner.name"#,
+        ),
+        // `containsAll` / `containsAny` with a literal right operand; a
+        // literal left operand makes the `contains` disjunctions again
+        (
+            "[1, 2].containsAll([principal.age])",
+            "1 == principal.age || 2 == principal.age",
+        ),
+        (
+            "resource.level == 1 && [principal.age].containsAny([resource.level, 7])",
+            "resource.level == 1 && (principal.age == resource.level || principal.age == 7)",
+        ),
+        // `isEmpty` on a set literal is decided, its elements guarded
+        (
+            "[principal.age].isEmpty()",
+            "if principal.age == principal.age then false else false",
+        ),
+        // `in` over a set literal is a disjunction; literals and variables need no guard
+        (
+            r#"principal in [Group::"g1", Group::"g2"]"#,
+            r#"principal in Group::"g1" || principal in Group::"g2""#,
+        ),
+        // a rewritten node under an erring node: the node's own error must
+        // still precede its right sibling's — it becomes a guard, which the
+        // term then evaluates first (dropped); the field's guard stays, as
+        // the term evaluates it inside the `+`, not as a unit
+        (
+            "({x: principal.age}.x + 1) == resource.level + 1",
+            "if principal.age == principal.age
+             then principal.age + 1 == resource.level + 1 else false",
+        ),
+        // a left conjunct that evaluated establishes its strict subterms
+        // (`resource.level` above); likewise the first split's wrapper
+        // establishes `principal.age` for the elimination inside it
+        (
+            "[principal.age].contains(if c then 1 else 2)",
+            "if principal.age == principal.age
+             then (if c then principal.age == 1 else principal.age == 2) else false",
+        ),
+        // the context of a false `||`-left / `if`-test establishes the guard
+        (
+            "principal.age + 1 == 19 || [principal.age + 1].isEmpty()",
+            "principal.age + 1 == 19 || false",
+        ),
+        (
+            "if principal.age + 1 == 19 then false else [principal.age + 1].isEmpty()",
+            "if principal.age + 1 == 19 then false else false",
+        ),
+        // the left-literal `containsAny` arm alone: the `contains` disjuncts
+        // can err, so the literal's elements and the set keep their guards
+        (
+            "principal has tags && [principal.age, 7].containsAny(principal.tags)",
+            "principal has tags
+             && (if principal.age == principal.age && principal.tags == principal.tags
+                 then principal.tags.contains(principal.age) || principal.tags.contains(7)
+                 else false)",
+        ),
+        // `in` with an element that needs a guard
+        (
+            r#"principal has parent && principal in [Group::"g1", principal.parent]"#,
+            r#"principal has parent
+             && (if principal.parent == principal.parent
+                 then principal in Group::"g1" || principal in principal.parent else false)"#,
+        ),
+        // a leaf erring twice in one atom is guarded once — and, deduped
+        // before the term's own evaluation order is compared, not at all
+        (
+            "{x: principal.age, y: principal.age}.y == 1",
+            "principal.age == 1",
+        ),
+        // set equality with a literal side: `containsAll` both ways, the
+        // literal-right one an element-wise `contains` chain
+        (
+            "principal has tags && principal.tags == [1, 2]",
+            "principal has tags
+             && (if principal.tags == principal.tags
+                 then (principal.tags.contains(1) && principal.tags.contains(2))
+                      && [1, 2].containsAll(principal.tags)
+                 else false)",
+        ),
+        // both sides literal: two chains of element equalities
+        (
+            "[principal.age, 7] == [7, principal.age]",
+            "((principal.age == 7 || true) && (principal.age == principal.age || 7 == principal.age))
+             && ((7 == principal.age || principal.age == principal.age) && (true || principal.age == 7))",
+        ),
+        // nested: a record field equality and a `contains` element equality
+        (
+            "principal has tags && {x: principal.tags, y: 1} == {x: [3], y: 1}",
+            "principal has tags
+             && (if principal.tags == principal.tags
+                 then (principal.tags.contains(3) && [3].containsAll(principal.tags)) && true
+                 else false)",
+        ),
+        (
+            "principal has tags && [[principal.age]].contains(principal.tags)",
+            "principal has tags
+             && (if principal.age == principal.age && principal.tags == principal.tags
+                 then ([principal.age].containsAll(principal.tags)
+                       && principal.tags.contains(principal.age))
+                 else false)",
+        ),
+        // clean of literals: unchanged
+        ("a && principal.age == 1", "a && principal.age == 1"),
+        // an `iferror` call is opaque
+        (
+            "iferror({x: principal.age}.x == 1, false)",
+            "iferror({x: principal.age}.x == 1, false)",
+        ),
+    ]
+}
+
+#[test]
+fn elim_tables() {
+    let schema = schema();
+    for (input, expected) in elim_table() {
+        let input = normalize(input);
+        let normalized =
+            normalize_atoms(&input, &schema, &view(), DEFAULT_MAX_SPLIT_NODES).unwrap();
+        assert_eq!(
+            normalized,
+            normalize(expected),
+            "expected `{expected}` for `{input}`, got `{normalized}`"
+        );
+        assert!(
+            eliminated(&normalized),
+            "`{normalized}` still has literals to eliminate"
+        );
+        assert!(
+            atoms_are_clean(&normalized),
+            "`{normalized}` has unclean atoms"
+        );
+        // on an already clean input the pass alone, re-split, agrees
+        if atoms_are_clean(&input) {
+            let alone =
+                eliminate_aggregates(&input, &schema, &view(), DEFAULT_MAX_SPLIT_NODES).unwrap();
+            let resplit = split_atoms(&alone, DEFAULT_MAX_SPLIT_NODES).unwrap();
+            assert_eq!(resplit, normalized, "for `{input}`");
+        }
+    }
+}
+
+#[tokio::test]
+async fn elim_tables_are_solver_equivalent() {
+    let schema = schema();
+    let mut ev = evaluator(&schema);
+    for (input, _) in elim_table() {
+        let input = normalize(input);
+        let normalized =
+            normalize_atoms(&input, &schema, &view(), DEFAULT_MAX_SPLIT_NODES).unwrap();
+        let annotated = with_default_metadata(&normalized).unwrap();
+        assert!(
+            ev.check_equivalent(&input, &annotated, &view(), no_extra())
+                .await
+                .unwrap(),
+            "`{normalized}` is not solver-equivalent to `{input}`"
+        );
+        let dnf = Dnf::of_expr(&normalized).unwrap();
+        assert_equivalent(&mut ev, &input, &dnf).await;
+    }
+}
+
+/// The rewrites assume a well-typed input and refuse anything else.
+/// The `contains` rule duplicates its argument per element, so nested
+/// literals grow the rewritten atom exponentially as a tree while the
+/// elimination itself, on shared structure, stays small: the budget rejects
+/// the output before anything walks it as a tree.
+#[test]
+fn elim_budget() {
+    let schema = schema();
+    let mut text = "principal.active".to_string();
+    for _ in 0..8 {
+        text = format!("[true, true, true, true, true, true, true, true].contains({text})");
+    }
+    let input = normalize(&text);
+    let started = std::time::Instant::now();
+    assert!(matches!(
+        normalize_atoms(&input, &schema, &view(), DEFAULT_MAX_SPLIT_NODES),
+        Err(DnfError::TooLarge { .. })
+    ));
+    assert!(
+        started.elapsed() < std::time::Duration::from_secs(5),
+        "the budget did not stop the blow-up in time"
+    );
+    // a small nesting is fine
+    let small = normalize("[true, false].contains([true, false].contains(principal.active))");
+    assert!(normalize_atoms(&small, &schema, &view(), DEFAULT_MAX_SPLIT_NODES).is_ok());
+}
+
+#[test]
+fn elim_rejects_ill_typed_input() {
+    let schema = schema();
+    for text in [
+        "principal.nick == \"x\"", // an optional attribute without a `has` guard
+        "principal.age == \"x\"",  // incomparable types
+        "[1].containsAll(principal.name)",
+    ] {
+        let input = expr(text);
+        assert!(
+            matches!(
+                eliminate_aggregates(&input, &schema, &view(), DEFAULT_MAX_SPLIT_NODES),
+                Err(DnfError::NotWellTyped { .. })
+            ),
+            "`{text}` should be rejected"
+        );
+        assert!(matches!(
+            normalize_atoms(&input, &schema, &view(), DEFAULT_MAX_SPLIT_NODES),
+            Err(DnfError::NotWellTyped { .. })
+        ));
+    }
+}
 /// `iferror` in the DNF pipeline: an `iferror` call is an atom (its root is
 /// not `&&`/`||`/`!`/`if`) that the splitter never looks inside, structure
 /// *around* it is hoisted as usual, and the results are solver-equivalent

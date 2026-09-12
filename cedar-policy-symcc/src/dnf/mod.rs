@@ -79,7 +79,23 @@
 //! soundness. Splitting composes with the conversion:
 //! `Dnf::of_expr(&split_atoms(&e, n)?)` yields cubes whose literals are
 //! opaque, indivisible terms, the guards among them.
+//!
+//! # Eliminating record and set literals (Phase 4, Step 1)
+//!
+//! [`eliminate_aggregates`] rewrites, bottom-up in every atom, the structure
+//! a record literal hides under `.attr` / `has` / `==` (both sides) and a set
+//! literal under `contains` (left) / `containsAll` (right) / `containsAny`
+//! (either) / `==` (either) / `isEmpty` / `in` (right) into the operations on the literal's
+//! elements, guarding each rewritten atom with the subterms the original
+//! evaluated (exactly like [`split_atoms`]'s guards) that the rewritten atom
+//! does not evaluate first itself. The rewrites assume a well-typed input,
+//! which the entry points check ([`DnfError::NotWellTyped`]).
+//! [`normalize_atoms`] is the pipeline `split_atoms` → `eliminate_aggregates`
+//! → `split_atoms` (the first split exposes every literal, the second hoists
+//! what the rules introduce), which [`split_policy`] runs on every
+//! (validated) condition.
 
+mod elim;
 mod interpret;
 mod like;
 mod paths;
@@ -93,6 +109,7 @@ use cedar_policy_core::expr_builder::ExprBuilder as _;
 use miette::Diagnostic;
 use thiserror::Error;
 
+pub use elim::{eliminate_aggregates, normalize_atoms};
 pub use interpret::interpret;
 pub use like::{likes_have_wildcards, rewrite_like};
 pub use split::{split_atoms, DEFAULT_MAX_SPLIT_NODES};
@@ -119,6 +136,22 @@ pub enum DnfError {
     /// The expression contains a node kind the converter does not handle.
     #[error("unsupported expression: {0}")]
     Unsupported(&'static str),
+    /// The expression is not well typed against the schema, which the
+    /// rewrites of [`eliminate_aggregates`] assume.
+    #[error("the expression is not well typed with respect to the schema")]
+    NotWellTyped {
+        /// Errors from the policy validator.
+        #[related]
+        errs: Vec<cedar_policy_core::validator::ValidationError>,
+    },
+    /// The request environment the expression was to be typechecked in is
+    /// not in the schema.
+    #[error("request environment {0:?} is not in the schema")]
+    RequestEnvNotFound(cedar_policy::RequestEnv),
+    /// Typechecking the expression failed for a reason other than typing
+    /// (the schema could not be compiled, say).
+    #[error("typechecking the expression failed: {0}")]
+    Typecheck(String),
 }
 
 /// An atom or its negation.
@@ -285,6 +318,14 @@ fn bool_lit(b: bool) -> Expr {
     ExprBuilder::new().with_expr_kind(ExprKind::Lit(AstLiteral::Bool(b)))
 }
 
+/// `left || right` without the constant folding `ExprBuilder::or` does.
+fn or(left: Expr, right: Expr) -> Expr {
+    ExprBuilder::new().with_expr_kind(ExprKind::Or {
+        left: Arc::new(left),
+        right: Arc::new(right),
+    })
+}
+
 /// `left && right` without the constant folding `ExprBuilder::and` does.
 fn and(left: Expr, right: Expr) -> Expr {
     ExprBuilder::new().with_expr_kind(ExprKind::And {
@@ -299,6 +340,13 @@ fn and_chain(ds: impl DoubleEndedIterator<Item = Expr>) -> Expr {
     ds.rev()
         .reduce(|acc, d| and(d, acc))
         .unwrap_or_else(|| bool_lit(true))
+}
+
+/// `d₁ || (d₂ || …)`, nested right; the empty chain is `false`.
+fn or_chain(ds: impl DoubleEndedIterator<Item = Expr>) -> Expr {
+    ds.rev()
+        .reduce(|acc, d| or(d, acc))
+        .unwrap_or_else(|| bool_lit(false))
 }
 
 /// The `&&`-spine of `e`, left to right, without `true` literals: `(a && b) && c`
