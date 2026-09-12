@@ -1,0 +1,2 @@
+op: simplify
+!("foo" == "foo")

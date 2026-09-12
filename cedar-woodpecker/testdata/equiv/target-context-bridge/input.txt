@@ -1,0 +1,4 @@
+removed: action1 resource1 context1
+context.context1.timestamp == context.timestamp
+context.context1.timestamp > 100
+context.context1 has reason

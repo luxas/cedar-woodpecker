@@ -1,0 +1,18 @@
+{
+  "transitions": [
+    {
+      "name": "pod-labels-reach-secrets",
+      "sources": [
+        {
+          "action": "Action::\"create\"",
+          "resource": "Pod"
+        }
+      ],
+      "target": {
+        "action": "Action::\"get\"",
+        "resource": "Secret"
+      },
+      "when": "resource.labels.containsAll(context.resource1.labels)"
+    }
+  ]
+}

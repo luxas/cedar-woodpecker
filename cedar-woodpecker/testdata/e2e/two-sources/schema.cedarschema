@@ -1,0 +1,4 @@
+entity User { name: String, groups: Set<String> };
+entity Pod { namespace: String, meta: { owner: String } };
+entity Secret { namespace: String, owner: String };
+action create, get, patch appliesTo { principal: User, resource: [Pod, Secret] };

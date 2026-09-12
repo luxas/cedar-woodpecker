@@ -1,0 +1,5 @@
+removed: action1 resource1
+principal.name == "alice"
+resource.a.containsAll(context.resource1.s)
+context.resource1.s.containsAny(resource.b)
+resource.ns == "foo"

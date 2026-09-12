@@ -5,6 +5,7 @@ members = [
 	"cedar-policy-formatter",
 	"cedar-policy-cli",
 	"cedar-policy-symcc",
+	"cedar-woodpecker",
 	"cedar-testing",
 	"cedar-wasm",
 	"cedar-language-server",

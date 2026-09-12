@@ -1,0 +1,1 @@
+resource.b.contains(resource.e)

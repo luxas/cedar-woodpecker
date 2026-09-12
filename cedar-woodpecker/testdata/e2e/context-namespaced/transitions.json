@@ -1,0 +1,18 @@
+{
+  "transitions": [
+    {
+      "name": "pod-create-reads-logs",
+      "sources": [
+        {
+          "action": "Action::\"create\"",
+          "resource": "Pod"
+        }
+      ],
+      "target": {
+        "action": "Audit::Action::\"read\"",
+        "resource": "Audit::Log"
+      },
+      "when": "resource.tenant == context.context1.tenant"
+    }
+  ]
+}

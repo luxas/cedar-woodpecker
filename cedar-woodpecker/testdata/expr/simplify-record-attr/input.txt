@@ -1,0 +1,2 @@
+op: simplify
+{a: principal.x, b: 2}.a == 3

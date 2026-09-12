@@ -1,0 +1,2 @@
+context.resource1.ns == "exact"
+resource.ns == "exact"

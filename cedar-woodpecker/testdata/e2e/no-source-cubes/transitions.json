@@ -1,0 +1,17 @@
+{
+  "transitions": [
+    {
+      "name": "needs-get",
+      "sources": [
+        {
+          "action": "Action::\"get\"",
+          "resource": "Pod"
+        }
+      ],
+      "target": {
+        "action": "Action::\"get\"",
+        "resource": "Secret"
+      }
+    }
+  ]
+}

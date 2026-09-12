@@ -1,0 +1,1 @@
+principal.a || (principal.b || principal.c)

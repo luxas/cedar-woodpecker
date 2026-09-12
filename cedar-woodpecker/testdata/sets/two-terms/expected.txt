@@ -1,0 +1,2 @@
+resource.a.containsAll(resource.b)
+!resource.d.containsAll(resource.c)

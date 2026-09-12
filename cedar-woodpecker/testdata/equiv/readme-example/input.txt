@@ -1,0 +1,4 @@
+removed: action1 resource1
+principal.org == context.resource1.org
+context.resource1.org.foo == context.resource1.bar
+context.resource1.bar == "foo"

@@ -1,0 +1,41 @@
+namespace Audit {
+  entity Log = {
+    namespace: String
+  };
+
+  action "read" appliesTo {
+    principal: [Core::User],
+    resource: [Log],
+    context: {
+      action1: Core::__woodpecker_action1,
+      context1: Core::__woodpecker_context1,
+      resource1: Core::__woodpecker_resource1
+    }
+  };
+}
+
+namespace Core {
+  type CreateCtx = {
+    dryRun: Bool
+  };
+
+  type __woodpecker_action1 = Action;
+
+  type __woodpecker_context1 = CreateCtx;
+
+  type __woodpecker_resource1 = Pod;
+
+  entity Pod = {
+    namespace: String
+  };
+
+  entity User = {
+    name: String
+  };
+
+  action "create" appliesTo {
+    principal: [User],
+    resource: [Pod],
+    context: CreateCtx
+  };
+}

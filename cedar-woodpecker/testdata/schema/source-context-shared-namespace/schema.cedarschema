@@ -1,0 +1,12 @@
+namespace Shared {
+  type Ctx = { dryRun: Bool };
+}
+namespace Core {
+  entity User { name: String };
+  entity Pod { namespace: String };
+  action create appliesTo { principal: User, resource: Pod, context: Shared::Ctx };
+}
+namespace Audit {
+  entity Log { tenant: String };
+  action read appliesTo { principal: Core::User, resource: Log };
+}

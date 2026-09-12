@@ -1,0 +1,2 @@
+// == error ==
+// transitions: transition `bad`: `when` does not typecheck in (principal: User, action: Action::"get", resource: Secret): for policy `woodpecker.bad.when`, attribute `nope` on entity type `Pod` not found

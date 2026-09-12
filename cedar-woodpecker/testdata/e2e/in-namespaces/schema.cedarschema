@@ -1,0 +1,5 @@
+entity Namespace;
+entity User;
+entity Pod { ns: Namespace };
+entity Secret { ns: Namespace };
+action create, get appliesTo { principal: User, resource: [Pod, Secret] };

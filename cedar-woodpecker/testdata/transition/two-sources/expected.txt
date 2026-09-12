@@ -1,0 +1,6 @@
+t
+  principal: (every applicable type)
+  sources: Action::"create" on Pod, Action::"patch" on Pod
+  target: Action::"get" on Secret
+  when: context.resource1.namespace == resource.namespace
+  added: action1, resource1, context1, action2, resource2, context2

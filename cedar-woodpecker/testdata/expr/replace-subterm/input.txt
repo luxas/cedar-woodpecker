@@ -1,0 +1,4 @@
+op: replace
+from: principal.a
+to: context.x
+principal.a.b == principal.a && principal.b == 1

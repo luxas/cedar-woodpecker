@@ -1,0 +1,4 @@
+op: and_chain
+principal.a
+principal.b
+principal.c

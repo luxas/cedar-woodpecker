@@ -1,0 +1,12 @@
+{
+  "transitions": [
+    {
+      "name": "t",
+      "sources": [],
+      "target": {
+        "action": "Action::\"get\"",
+        "resource": "Secret"
+      }
+    }
+  ]
+}

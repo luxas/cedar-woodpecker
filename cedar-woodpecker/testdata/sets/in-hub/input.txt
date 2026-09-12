@@ -1,0 +1,4 @@
+removed: action1 resource1
+resource.a in context.resource1.s
+context.resource1.s in resource.c
+context.resource1.s in resource.d

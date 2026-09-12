@@ -1,0 +1,5 @@
+removed: action1 resource1
+resource.a.containsAll(context.resource1.s)
+context.resource1.s.containsAll(resource.b)
+resource.c.contains(context.resource1.x)
+!(resource.d.contains(context.resource1.x))

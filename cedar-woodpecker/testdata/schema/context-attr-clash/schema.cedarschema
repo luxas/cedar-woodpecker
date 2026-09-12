@@ -1,0 +1,5 @@
+entity User { name: String };
+entity Pod { namespace: String };
+entity Secret { namespace: String };
+action create appliesTo { principal: User, resource: [Pod, Secret] };
+action get appliesTo { principal: User, resource: [Pod, Secret], context: { context1: String } };

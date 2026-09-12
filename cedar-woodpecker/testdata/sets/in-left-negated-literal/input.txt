@@ -1,0 +1,3 @@
+removed: action1 resource1
+context.resource1.s in Namespace::"foo"
+!(context.resource1.s in Namespace::"bar")

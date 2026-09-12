@@ -1,0 +1,45 @@
+{
+  "cubes": [
+    {
+      "principal": "User",
+      "action": "Action::\"create\"",
+      "resource": "Pod",
+      "id": "policy0.cube0",
+      "condition": "(principal.name == \"alice\") && (context.tenant == \"acme\")",
+      "outcomes": [
+        "True",
+        "False",
+        "Error"
+      ]
+    }
+  ],
+  "escalations": [
+    {
+      "transition": "pod-create-reads-logs",
+      "principal": "User",
+      "sources": [
+        {
+          "principal": "User",
+          "action": "Action::\"create\"",
+          "resource": "Pod",
+          "cubes": [
+            "policy0.cube0"
+          ]
+        }
+      ],
+      "target": {
+        "principal": "User",
+        "action": "Audit::Action::\"read\"",
+        "resource": "Audit::Log",
+        "cubes": [
+          "woodpecker.pod-create-reads-logs.cube0"
+        ]
+      },
+      "path_id": "woodpecker.pod-create-reads-logs.cube0",
+      "path": "(principal.name == \"alice\") && (context.context1.tenant == \"acme\") && (resource.tenant == context.context1.tenant)",
+      "policy": "@woodpecker(\"pod-create-reads-logs: policy0.cube0\")\npermit(\n  principal is User,\n  action == Audit::Action::\"read\",\n  resource is Audit::Log\n) when {\n  (principal.name == \"alice\") && (resource.tenant == \"acme\")\n};",
+      "sound": true,
+      "problem": null
+    }
+  ]
+}

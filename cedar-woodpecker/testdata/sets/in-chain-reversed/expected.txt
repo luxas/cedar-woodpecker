@@ -1,0 +1,1 @@
+resource.a in resource.c

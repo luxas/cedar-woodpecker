@@ -1,0 +1,1 @@
+error: transitions: transition `t`: when: unexpected end of input

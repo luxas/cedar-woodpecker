@@ -1,0 +1,5 @@
+removed: action1 resource1
+context.resource1.ns == context.resource1.ns
+context.resource1.ns like "exact"
+!(context.resource1.ns == "other")
+resource.ns == context.resource1.ns

@@ -1,0 +1,3 @@
+principal.org == context.resource1.org
+principal.org.foo == "foo"
+context.resource1.bar == "foo"

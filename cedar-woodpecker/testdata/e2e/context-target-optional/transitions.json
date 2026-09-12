@@ -1,0 +1,18 @@
+{
+  "transitions": [
+    {
+      "name": "pod-create-reads-secrets",
+      "sources": [
+        {
+          "action": "Action::\"create\"",
+          "resource": "Pod"
+        }
+      ],
+      "target": {
+        "action": "Action::\"get\"",
+        "resource": "Secret"
+      },
+      "when": "context has timestamp && context.context1.timestamp == context.timestamp"
+    }
+  ]
+}

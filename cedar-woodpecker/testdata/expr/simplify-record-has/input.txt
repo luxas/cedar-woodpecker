@@ -1,0 +1,2 @@
+op: simplify
+{a: 1} has b

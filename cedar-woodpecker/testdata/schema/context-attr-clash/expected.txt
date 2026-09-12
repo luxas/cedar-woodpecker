@@ -1,0 +1,1 @@
+error: schema: cannot extend the schema: the context of `get` already has an attribute `context1`

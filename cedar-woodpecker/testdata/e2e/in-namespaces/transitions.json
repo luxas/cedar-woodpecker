@@ -1,0 +1,18 @@
+{
+  "transitions": [
+    {
+      "name": "pod-namespace-reaches-secrets",
+      "sources": [
+        {
+          "action": "Action::\"create\"",
+          "resource": "Pod"
+        }
+      ],
+      "target": {
+        "action": "Action::\"get\"",
+        "resource": "Secret"
+      },
+      "when": "resource.ns in context.resource1.ns"
+    }
+  ]
+}

@@ -1,0 +1,7 @@
+entity User { name: String };
+entity Pod { namespace: String };
+entity Secret { namespace: String };
+type Base = { tenant: String };
+type Ctx = Base;
+action create appliesTo { principal: User, resource: Pod };
+action get appliesTo { principal: User, resource: Secret, context: Ctx };
