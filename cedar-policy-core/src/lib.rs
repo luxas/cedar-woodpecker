@@ -113,6 +113,7 @@ pub mod pst;
 #[cfg_attr(docsrs, doc(cfg(feature = "tpe")))]
 pub mod tpe;
 pub mod transitive_closure;
+pub mod typechecked;
 pub mod validator;
 
 #[cfg(any(test, feature = "test-util"))]

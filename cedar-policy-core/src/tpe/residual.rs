@@ -20,12 +20,14 @@ use std::collections::HashSet;
 use std::{collections::BTreeMap, sync::Arc, sync::LazyLock};
 
 use crate::ast::{
-    Annotations, Effect, EntityUID, Literal, Policy, PolicyID, SlotEnv, UnwrapInfallible, ValueKind,
+    Annotations, Effect, EntityUID, ExprKind, Literal, Policy, PolicyID, RestrictedExpr, SlotEnv,
+    UnwrapInfallible, ValueKind,
 };
 use crate::evaluator::evaluation_errors;
 #[cfg(feature = "tolerant-ast")]
 use crate::tpe::err::ErrorNotSupportedError;
 use crate::tpe::err::{ExprToResidualError, MissingTypeAnnotationError, UnknownNotSupportedError};
+use crate::typechecked::StaticError;
 use crate::validator::types::{BoolType, Type};
 use crate::{
     ast::{self, BinaryOp, EntityType, Expr, Name, Pattern, UnaryOp, Value, Var},
@@ -608,15 +610,173 @@ impl Residual {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, Hash, Clone)]
-/// Describes the possible evaluation outcomes from evaluating a residual/expression.
-pub enum EvaluationOutcome {
-    /// Describes the residual evaluation to true
-    True,
-    /// Describes the residual evaluation to false
-    False,
-    /// Describes the residual evaluation to some error
-    Error, // TODO: Split into RuntimeError, EntityNotExistError and TypeError?
+pub use crate::typechecked::EvaluationOutcome;
+
+impl Residual {
+    /// The residual as a typed expression, every node carrying its type.
+    ///
+    /// `Err` when the residual *is* an error (a static error has no
+    /// expression form); `Ok(None)` when an error node sits below the root
+    /// (the synthetic `error()` call [`From<Residual> for Expr`] emits is not
+    /// a Cedar function other consumers know) or a concrete value has no
+    /// expression form with the information at hand; `Ok(Some(expr))`
+    /// otherwise.
+    pub fn to_typed_expr(&self) -> Result<Option<Expr<Option<Type>>>, StaticError> {
+        match self {
+            Residual::Error(ty) => Err(StaticError { ty: ty.clone() }),
+            _ => Ok(self.to_typed_expr_inner()),
+        }
+    }
+
+    fn to_typed_expr_inner(&self) -> Option<Expr<Option<Type>>> {
+        let typed = |ty: &Type, kind: ExprKind<Option<Type>>| {
+            ast::ExprBuilder::with_data(Some(ty.clone())).with_expr_kind(kind)
+        };
+        let child = |r: &Arc<Residual>| r.to_typed_expr_inner().map(Arc::new);
+        match self {
+            Residual::Error(_) => None,
+            Residual::Concrete { value, ty } => value_to_typed_expr(value, ty),
+            Residual::Partial { kind, ty } => {
+                let kind = match kind {
+                    ResidualKind::Var(v) => ExprKind::Var(*v),
+                    ResidualKind::If {
+                        test_expr,
+                        then_expr,
+                        else_expr,
+                    } => ExprKind::If {
+                        test_expr: child(test_expr)?,
+                        then_expr: child(then_expr)?,
+                        else_expr: child(else_expr)?,
+                    },
+                    ResidualKind::And { left, right } => ExprKind::And {
+                        left: child(left)?,
+                        right: child(right)?,
+                    },
+                    ResidualKind::Or { left, right } => ExprKind::Or {
+                        left: child(left)?,
+                        right: child(right)?,
+                    },
+                    ResidualKind::UnaryApp { op, arg } => ExprKind::UnaryApp {
+                        op: *op,
+                        arg: child(arg)?,
+                    },
+                    ResidualKind::BinaryApp { op, arg1, arg2 } => ExprKind::BinaryApp {
+                        op: *op,
+                        arg1: child(arg1)?,
+                        arg2: child(arg2)?,
+                    },
+                    ResidualKind::ExtensionFunctionApp { fn_name, args } => {
+                        ExprKind::ExtensionFunctionApp {
+                            fn_name: fn_name.clone(),
+                            args: Arc::new(
+                                args.iter()
+                                    .map(|a| a.to_typed_expr_inner())
+                                    .collect::<Option<Vec<_>>>()?,
+                            ),
+                        }
+                    }
+                    ResidualKind::GetAttr { expr, attr } => ExprKind::GetAttr {
+                        expr: child(expr)?,
+                        attr: attr.clone(),
+                    },
+                    ResidualKind::HasAttr { expr, attr } => ExprKind::HasAttr {
+                        expr: child(expr)?,
+                        attr: attr.clone(),
+                    },
+                    ResidualKind::Like { expr, pattern } => ExprKind::Like {
+                        expr: child(expr)?,
+                        pattern: pattern.clone(),
+                    },
+                    ResidualKind::Is { expr, entity_type } => ExprKind::Is {
+                        expr: child(expr)?,
+                        entity_type: entity_type.clone(),
+                    },
+                    ResidualKind::Set(elements) => ExprKind::Set(Arc::new(
+                        elements
+                            .iter()
+                            .map(|e| e.to_typed_expr_inner())
+                            .collect::<Option<Vec<_>>>()?,
+                    )),
+                    ResidualKind::Record(map) => ExprKind::Record(Arc::new(
+                        map.iter()
+                            .map(|(k, v)| Some((k.clone(), v.to_typed_expr_inner()?)))
+                            .collect::<Option<BTreeMap<_, _>>>()?,
+                    )),
+                };
+                Some(typed(ty, kind))
+            }
+        }
+    }
+}
+
+/// A concrete value as a typed expression: the type gives the element and
+/// attribute types; an extension value is its constructor call over literal
+/// arguments. `None` where the type does not say (which a well-formed value
+/// of that type does not produce).
+fn value_to_typed_expr(value: &Value, ty: &Type) -> Option<Expr<Option<Type>>> {
+    let typed = |ty: &Type, kind: ExprKind<Option<Type>>| {
+        ast::ExprBuilder::with_data(Some(ty.clone()))
+            .with_maybe_source_loc(value.loc.as_ref())
+            .with_expr_kind(kind)
+    };
+    match &value.value {
+        ValueKind::Lit(lit) => Some(typed(ty, ExprKind::Lit(lit.clone()))),
+        ValueKind::Set(set) => {
+            let Type::Set { element_type } = ty else {
+                return None;
+            };
+            let elements = match element_type {
+                Some(ety) => set
+                    .iter()
+                    .map(|v| value_to_typed_expr(v, ety))
+                    .collect::<Option<Vec<_>>>()?,
+                None if set.is_empty() => Vec::new(),
+                None => return None,
+            };
+            Some(typed(ty, ExprKind::Set(Arc::new(elements))))
+        }
+        ValueKind::Record(record) => {
+            let Type::Record { attrs, .. } = ty else {
+                return None;
+            };
+            let fields = record
+                .iter()
+                .map(|(k, v)| {
+                    let attr = attrs.get_attr(k)?;
+                    Some((k.clone(), value_to_typed_expr(v, &attr.attr_type)?))
+                })
+                .collect::<Option<BTreeMap<_, _>>>()?;
+            Some(typed(ty, ExprKind::Record(Arc::new(fields))))
+        }
+        ValueKind::ExtensionValue(ev) => {
+            let call: Expr = RestrictedExpr::from(ev.as_ref().clone()).into();
+            let ExprKind::ExtensionFunctionApp { fn_name, args } = call.expr_kind() else {
+                return None;
+            };
+            let args = args
+                .iter()
+                .map(|arg| match arg.expr_kind() {
+                    ExprKind::Lit(lit) => {
+                        let arg_ty = match lit {
+                            Literal::Bool(_) => Type::primitive_boolean(),
+                            Literal::Long(_) => Type::primitive_long(),
+                            Literal::String(_) => Type::primitive_string(),
+                            Literal::EntityUID(_) => return None,
+                        };
+                        Some(typed(&arg_ty, ExprKind::Lit(lit.clone())))
+                    }
+                    _ => None,
+                })
+                .collect::<Option<Vec<_>>>()?;
+            Some(typed(
+                ty,
+                ExprKind::ExtensionFunctionApp {
+                    fn_name: fn_name.clone(),
+                    args: Arc::new(args),
+                },
+            ))
+        }
+    }
 }
 
 /// Conversion from `Residual` to `Expr` so that we can use the concrete evaluator for re-authorization
