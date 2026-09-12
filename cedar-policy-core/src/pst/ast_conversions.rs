@@ -414,6 +414,12 @@ impl Expr {
                             vec![left_ast, right_ast],
                         )
                         .unwrap_infallible(),
+                    BinaryOp::IfError => builder
+                        .call_extension_fn(
+                            extensions::iferror::IFERROR_NAME.clone(),
+                            vec![left_ast, right_ast],
+                        )
+                        .unwrap_infallible(),
                     BinaryOp::DecimalLessThan => builder
                         .call_extension_fn(
                             extensions::decimal::constants::LESS_THAN.clone(),

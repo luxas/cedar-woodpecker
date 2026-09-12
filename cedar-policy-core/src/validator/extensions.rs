@@ -41,6 +41,7 @@ pub mod decimal;
 #[cfg(feature = "datetime")]
 pub mod datetime;
 
+pub mod iferror;
 pub mod partial_evaluation;
 
 static ALL_AVAILABLE_EXTENSION_SCHEMA_OBJECTS: LazyLock<Vec<ExtensionSchema>> =
@@ -54,6 +55,7 @@ static ALL_AVAILABLE_EXTENSION_SCHEMA_OBJECTS: LazyLock<Vec<ExtensionSchema>> =
             datetime::extension_schema(),
             #[cfg(feature = "partial-eval")]
             partial_evaluation::extension_schema(),
+            iferror::extension_schema(),
         ]
     });
 

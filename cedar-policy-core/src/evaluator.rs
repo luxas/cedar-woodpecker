@@ -310,6 +310,36 @@ impl<'e> RestrictedEvaluator<'e> {
                 }
             }
             ExprKind::ExtensionFunctionApp { fn_name, args } => {
+                // `iferror(e, d)` coalesces `e`'s error into `d`'s boolean, so
+                // it must see `e`'s error: evaluate the arguments itself
+                // instead of strictly. See `crate::extensions::iferror`.
+                if let ([first, second], true) =
+                    (args.as_slice(), crate::extensions::iferror::is_iferror(fn_name))
+                {
+                    // assuming the invariant holds for `e`, it will hold for its arguments
+                    return match self
+                        .partial_interpret(BorrowedRestrictedExpr::new_unchecked(first))
+                    {
+                        Ok(PartialValue::Value(v)) => Ok(Value::from(v.get_as_bool()?).into()),
+                        Ok(PartialValue::Residual(r)) => Ok(Expr::call_extension_fn(
+                            fn_name.clone(),
+                            vec![r, second.clone()],
+                        )
+                        .into()),
+                        Err(_) => match self
+                            .partial_interpret(BorrowedRestrictedExpr::new_unchecked(second))?
+                        {
+                            PartialValue::Value(v) => Ok(Value::from(v.get_as_bool()?).into()),
+                            // a partial fallback stays inside the call (its boolean
+                            // coercion must still happen when it is filled in)
+                            PartialValue::Residual(r) => Ok(Expr::call_extension_fn(
+                                fn_name.clone(),
+                                vec![first.clone(), r],
+                            )
+                            .into()),
+                        },
+                    };
+                }
                 let args = args
                     .iter()
                     .map(|arg| self.partial_interpret(BorrowedRestrictedExpr::new_unchecked(arg))) // assuming the invariant holds for `e`, it will hold here
@@ -667,6 +697,28 @@ impl<'e> Evaluator<'e> {
                 }
             }
             ExprKind::ExtensionFunctionApp { fn_name, args } => {
+                // `iferror(e, d)` coalesces `e`'s error into `d`'s boolean, so
+                // it must see `e`'s error: evaluate the arguments itself
+                // instead of strictly. See `crate::extensions::iferror`.
+                if let ([first, second], true) = (
+                    args.as_slice(),
+                    crate::extensions::iferror::is_iferror(fn_name),
+                ) {
+                    return match self.partial_interpret(first, slots) {
+                        Ok(PartialValue::Value(v)) => Ok(Value::from(v.get_as_bool()?).into()),
+                        Ok(PartialValue::Residual(r)) => Ok(PartialValue::Residual(
+                            Expr::call_extension_fn(fn_name.clone(), vec![r, second.clone()]),
+                        )),
+                        Err(_) => match self.partial_interpret(second, slots)? {
+                            PartialValue::Value(v) => Ok(Value::from(v.get_as_bool()?).into()),
+                            // a partial fallback stays inside the call (its boolean
+                            // coercion must still happen when it is filled in)
+                            PartialValue::Residual(r) => Ok(PartialValue::Residual(
+                                Expr::call_extension_fn(fn_name.clone(), vec![first.clone(), r]),
+                            )),
+                        },
+                    };
+                }
                 let args = args
                     .iter()
                     .map(|arg| self.partial_interpret(arg, slots))
@@ -6061,6 +6113,94 @@ pub(crate) mod test {
         let r = eval.partial_interpret(&e, &HashMap::new()).unwrap();
 
         assert_eq!(r, PartialValue::Residual(e));
+    }
+
+    /// The `iferror` table: `true`/`false` pass through with the fallback
+    /// unevaluated, a non-boolean first argument is a type error, and an
+    /// error is coalesced into the fallback's boolean (or the fallback's
+    /// own error).
+    #[test]
+    fn iferror_table() {
+        let es = Entities::new();
+        let eval = Evaluator::new(empty_request(), &es, Extensions::all_available());
+        let iferror =
+            |a: Expr, b: Expr| Expr::call_extension_fn("iferror".parse().unwrap(), vec![a, b]);
+        // an expression that always errors: `1 + <max>` overflows
+        let err = || Expr::add(Expr::val(i64::MAX), Expr::val(1));
+        let interp = |e: &Expr| eval.interpret(e, &HashMap::new());
+
+        assert_eq!(
+            interp(&iferror(Expr::val(true), Expr::val(false))).unwrap(),
+            Value::from(true)
+        );
+        assert_eq!(
+            interp(&iferror(Expr::val(false), Expr::val(true))).unwrap(),
+            Value::from(false)
+        );
+        // the fallback is not evaluated when the first argument succeeds
+        assert_eq!(
+            interp(&iferror(Expr::val(true), err())).unwrap(),
+            Value::from(true)
+        );
+        assert_eq!(
+            interp(&iferror(Expr::val(false), err())).unwrap(),
+            Value::from(false)
+        );
+        // an error is coalesced into the fallback
+        assert_eq!(
+            interp(&iferror(err(), Expr::val(true))).unwrap(),
+            Value::from(true)
+        );
+        assert_eq!(
+            interp(&iferror(err(), Expr::val(false))).unwrap(),
+            Value::from(false)
+        );
+        // ... including an error that is not an overflow (a missing attribute)
+        let missing = Expr::get_attr(Expr::record([]).unwrap(), "x".into());
+        assert_eq!(
+            interp(&iferror(missing, Expr::val(true))).unwrap(),
+            Value::from(true)
+        );
+        // a non-boolean first argument is a type error, not coalesced
+        assert!(interp(&iferror(Expr::val(1), Expr::val(true))).is_err());
+        // the fallback's own error and non-boolean value are reported
+        assert!(interp(&iferror(err(), err())).is_err());
+        assert!(interp(&iferror(err(), Expr::val("x"))).is_err());
+        // wrong arity is an error
+        let bad = Expr::call_extension_fn("iferror".parse().unwrap(), vec![Expr::val(true)]);
+        assert!(interp(&bad).is_err());
+        // nested and under `!`: `!iferror(err, false)` is `true`
+        assert_eq!(
+            interp(&Expr::not(iferror(err(), Expr::val(false)))).unwrap(),
+            Value::from(true)
+        );
+    }
+
+    /// `iferror` with an unknown first argument stays a residual carrying the
+    /// unevaluated fallback; an unknown fallback behind an erroring first
+    /// argument stays inside the call too.
+    #[test]
+    fn iferror_partial() {
+        let es = Entities::new();
+        let eval = Evaluator::new(empty_request(), &es, Extensions::all_available());
+        let iferror =
+            |a: Expr, b: Expr| Expr::call_extension_fn("iferror".parse().unwrap(), vec![a, b]);
+        let err = || Expr::add(Expr::val(i64::MAX), Expr::val(1));
+        let unk = || Expr::unknown(Unknown::new_untyped("a"));
+
+        let e = iferror(unk(), Expr::val(false));
+        let r = eval.partial_interpret(&e, &HashMap::new()).unwrap();
+        assert_eq!(r, PartialValue::Residual(e));
+
+        // an unknown fallback behind an erroring first argument stays inside the
+        // call, so its boolean coercion still happens once it is filled in
+        let e = iferror(err(), unk());
+        let r = eval.partial_interpret(&e, &HashMap::new()).unwrap();
+        assert_eq!(r, PartialValue::Residual(e));
+
+        let e = iferror(Expr::val(true), unk());
+        let r = eval.partial_interpret(&e, &HashMap::new()).unwrap();
+        assert_eq!(r, PartialValue::Value(Value::from(true)));
     }
 
     #[cfg(feature = "ipaddr")]
