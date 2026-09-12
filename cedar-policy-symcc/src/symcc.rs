@@ -31,7 +31,7 @@ pub mod extension_types;
 pub(crate) mod extfun;
 mod extractor;
 pub mod factory;
-mod function;
+pub(crate) mod function;
 mod interpretation;
 pub mod op;
 mod result;
@@ -47,9 +47,7 @@ pub mod verifier;
 
 use cedar_policy::Schema;
 use cedar_policy_core::ast::{Expr, ExprBuilder, Policy, PolicySet};
-use cedar_policy_core::validator::{
-    typecheck::Typechecker, types::RequestEnv, ValidationMode, Validator,
-};
+use cedar_policy_core::validator::types::{RequestEnv, Type};
 use decoder::{decode_model, IdMaps};
 use encoder::Encoder;
 use env::to_validator_request_env;
@@ -654,43 +652,38 @@ fn well_typed_policy_inner(
     env: &RequestEnv<'_>,
     schema: &Schema,
 ) -> Result<Policy> {
-    let validator_schema = schema.as_ref();
-    // We need to perform these three checks like what the validator does here: https://github.com/cedar-policy/cedar/blob/82784864c01b5096cb73885dd2df5643074355ed/cedar-policy-core/src/validator.rs#L178-L185
-    // We don't need `validate_template_action_application` because existence of `env` already serves as evidence
-    let errs: Vec<_> =
-        Validator::validate_entity_types_and_literals(schema.as_ref(), policy.template()).collect();
-    if !errs.is_empty() {
-        return Err(Error::PolicyNotWellTyped { errs });
-    }
-    let type_checker = Typechecker::new(validator_schema, ValidationMode::Strict);
-    let policy_check = type_checker.typecheck_by_single_request_env(policy.template(), env);
+    let expr = typecheck_condition(policy, env, schema)?;
+    Ok(Policy::from_when_clause(
+        policy.effect(),
+        expr.into_expr::<ExprBuilder<()>>(),
+        policy.id().clone(),
+        policy.loc().cloned(),
+    ))
+}
 
-    use cedar_policy_core::validator::typecheck::PolicyCheck::*;
-    match policy_check {
-        Success(expr) => Ok(Policy::from_when_clause(
-            policy.effect(),
-            expr.into_expr::<ExprBuilder<()>>(),
-            policy.id().clone(),
-            policy.loc().cloned(),
-        )),
-        Irrelevant(errs, expr) =>
-        // A policy could be irrelevant just for this environment, so unless there were errors we don't want to fail.
-        // Note that if the policy was irrelevant for all environments schema validation would have caught this
-        // before SymCC. The Lean implementation needs to be updated to match this behavior.
-        {
-            if errs.is_empty() {
-                Ok(Policy::from_when_clause(
-                    policy.effect(),
-                    expr.into_expr::<ExprBuilder<()>>(),
-                    policy.id().clone(),
-                    policy.loc().cloned(),
-                ))
-            } else {
-                Err(Error::PolicyNotWellTyped { errs })
-            }
+/// Typechecks the condition of `policy` in `env` and returns the typed
+/// expression the typechecker produces (which is semantically equivalent to
+/// `policy.condition()`, but may differ structurally, e.g. `false && x`
+/// becomes `false`).
+///
+/// This is the typechecking step of `well_typed_policy()`, factored out so
+/// that callers who need the type annotations (the symbolic evaluator) can
+/// share it. The check itself — the validator's entity-type and literal
+/// checks, then strict typechecking in `env` linked to the policy's slot
+/// bindings, accepting an error-free `Irrelevant` — is
+/// [`cedar_policy_core::typechecked::typecheck_policy`].
+pub(crate) fn typecheck_condition(
+    policy: &Policy,
+    env: &RequestEnv<'_>,
+    schema: &Schema,
+) -> Result<Expr<Option<Type>>> {
+    use cedar_policy_core::typechecked::{typecheck_policy, TypecheckError};
+    typecheck_policy(policy, env, schema.as_ref()).map_err(|e| match e {
+        TypecheckError::NotWellTyped { errs } => Error::PolicyNotWellTyped { errs },
+        TypecheckError::MissingType | TypecheckError::UnboundSlot(_) => {
+            Error::PolicyNotWellTyped { errs: vec![] }
         }
-        Fail(errs) => Err(Error::PolicyNotWellTyped { errs }),
-    }
+    })
 }
 
 /// The Cedar symbolic compiler assumes that it receives well-typed policies.  This
