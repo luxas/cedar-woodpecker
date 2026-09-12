@@ -414,3 +414,21 @@ fn datetime_extension_typecheck_fails() {
         )
     );
 }
+
+#[test]
+fn iferror_typechecks() {
+    let expr = Expr::from_str("iferror(true, false)").expect("parsing should succeed");
+    assert_typechecks_empty_schema(&expr, &Type::primitive_boolean());
+    let expr = Expr::from_str("iferror(1 < 2, true) && !iferror(false, true)")
+        .expect("parsing should succeed");
+    assert_typechecks_empty_schema(&expr, &Type::primitive_boolean());
+}
+
+#[test]
+fn iferror_typecheck_fails() {
+    for src in ["iferror(1, false)", "iferror(true, \"x\")", "iferror(true)"] {
+        let expr = Expr::from_str(src).expect("parsing should succeed");
+        let errors = assert_typecheck_fails_empty_schema(&expr, &Type::primitive_boolean());
+        assert_exactly_one_diagnostic(errors);
+    }
+}

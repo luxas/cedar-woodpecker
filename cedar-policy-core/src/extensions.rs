@@ -24,6 +24,7 @@ pub mod decimal;
 
 #[cfg(feature = "datetime")]
 pub mod datetime;
+pub mod iferror;
 pub mod partial_evaluation;
 
 use std::collections::{HashMap, HashSet};
@@ -51,6 +52,7 @@ static ALL_AVAILABLE_EXTENSION_OBJECTS: LazyLock<Vec<Extension>> = LazyLock::new
         datetime::extension(),
         #[cfg(feature = "partial-eval")]
         partial_evaluation::extension(),
+        iferror::extension(),
     ]
 });
 

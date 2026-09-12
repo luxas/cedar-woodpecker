@@ -493,6 +493,8 @@ pub enum BinaryOp {
     DecimalGreater,
     /// `left.greaterThanOrEqual(right)` (decimal greater than or equal)
     DecimalGreaterEq,
+    /// `iferror(left, right)`: `left`'s boolean, or `right`'s when `left` errors
+    IfError,
 }
 
 impl BinaryOp {
@@ -500,6 +502,7 @@ impl BinaryOp {
         use crate::extensions;
         match self {
             BinaryOp::IsInRange => Some(&extensions::ipaddr::names::IS_IN_RANGE),
+            BinaryOp::IfError => Some(&extensions::iferror::IFERROR_NAME),
             BinaryOp::Offset => Some(&extensions::datetime::constants::OFFSET_METHOD_NAME),
             BinaryOp::DurationSince => Some(&extensions::datetime::constants::DURATION_SINCE_NAME),
             BinaryOp::DecimalLessThan => Some(&extensions::decimal::constants::LESS_THAN),
@@ -539,6 +542,7 @@ impl BinaryOp {
             "isInRange" => Some(BinaryOp::IsInRange),
             "offset" => Some(BinaryOp::Offset),
             "durationSince" => Some(BinaryOp::DurationSince),
+            "iferror" => Some(BinaryOp::IfError),
             _ => None,
         }
     }
@@ -1947,6 +1951,7 @@ mod tests {
                 BinaryOp::IsInRange,
                 BinaryOp::Offset,
                 BinaryOp::DurationSince,
+                BinaryOp::IfError,
             ];
 
             for op in ops {

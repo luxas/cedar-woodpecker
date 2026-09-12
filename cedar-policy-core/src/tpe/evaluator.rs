@@ -432,6 +432,44 @@ impl Evaluator<'_> {
                 }
             }
             ResidualKind::ExtensionFunctionApp { fn_name, args } => {
+                // `iferror(e, d)` coalesces `e`'s error into `d`'s boolean, so
+                // it must see `e`'s error; see `crate::extensions::iferror`.
+                if let ([first, second], true) = (
+                    args.as_slice(),
+                    crate::extensions::iferror::is_iferror(fn_name),
+                ) {
+                    let first = self.interpret(first);
+                    return match &first {
+                        Residual::Concrete { value, .. } => match value.get_as_bool() {
+                            Ok(b) => mk_concrete(Value::from(b)),
+                            Err(_) => mk_error(),
+                        },
+                        Residual::Error(_) => {
+                            let second = self.interpret(second);
+                            match &second {
+                                Residual::Concrete { value, .. } => match value.get_as_bool() {
+                                    Ok(b) => mk_concrete(Value::from(b)),
+                                    Err(_) => mk_error(),
+                                },
+                                Residual::Error(_) => mk_error(),
+                                // a partial fallback stays inside the call, so the
+                                // residual keeps the call's type
+                                Residual::Partial { .. } => {
+                                    mk_residual(ResidualKind::ExtensionFunctionApp {
+                                        fn_name: fn_name.clone(),
+                                        args: Arc::new(vec![first, second]),
+                                    })
+                                }
+                            }
+                        }
+                        Residual::Partial { .. } => {
+                            mk_residual(ResidualKind::ExtensionFunctionApp {
+                                fn_name: fn_name.clone(),
+                                args: Arc::new(vec![first, second.clone()]),
+                            })
+                        }
+                    };
+                }
                 let args: Vec<_> = args.iter().map(|a| self.interpret(a)).collect();
                 // If the arguments are all concrete values, we proceed to evaluate the function call
                 if args.iter().all(Residual::is_concrete) {
@@ -692,6 +730,58 @@ mod tests {
         assert_snapshot!(
             interpret_typed_str_to_str("context"),
             @"context"
+        );
+    }
+
+    /// `iferror` under type-aware partial evaluation: a concrete first
+    /// argument gives its boolean (the fallback is not consulted), an erroring
+    /// one gives the fallback, and an unknown one stays a residual carrying the
+    /// unevaluated fallback.
+    #[test]
+    fn test_iferror() {
+        let schema = parse_schema(
+            r#"entity E; action a appliesTo {principal: E, resource: E, context: {l: Long}};"#,
+        );
+        let eval = Evaluator {
+            request: &PartialRequest::new(
+                parse_partial_euid(r#"E"#),
+                r#"Action::"a""#.parse().unwrap(),
+                parse_partial_euid("E"),
+                Some(Arc::new(BTreeMap::from([(
+                    "l".parse().unwrap(),
+                    Value::from(0),
+                )]))),
+                &schema,
+            )
+            .unwrap(),
+            entities: &PartialEntities::new(),
+            extensions: Extensions::all_available(),
+        };
+        let interpret_typed_str_to_str = |e| interpret_typed_str_to_str(&eval, e, &schema);
+        assert_eq!(
+            interpret_typed_str_to_str("iferror(context.l == 0, false)"),
+            "true"
+        );
+        assert_eq!(
+            interpret_typed_str_to_str("iferror(context.l == 1, true)"),
+            "false"
+        );
+        // the fallback is not evaluated when the first argument succeeds
+        assert_eq!(
+            interpret_typed_str_to_str(
+                "iferror(context.l == 0, 9223372036854775807 + context.l + 1 == 0)"
+            ),
+            "true"
+        );
+        // an error is coalesced into the fallback
+        assert_eq!(
+            interpret_typed_str_to_str("iferror(9223372036854775807 + 1 == context.l, true)"),
+            "true"
+        );
+        // an unknown first argument stays a residual with the fallback intact
+        assert_eq!(
+            interpret_typed_str_to_str(r#"iferror(principal == E::"x", false)"#),
+            r#"iferror(principal == E::"x", false)"#
         );
     }
 
