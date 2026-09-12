@@ -33,7 +33,7 @@ use smol_str::SmolStr;
 use crate::{
     api, tpe_err, Authorizer, Context, Entities, Entity, EntityId, EntityTypeName, EntityUid,
     PartialEntityError, PartialRequestCreationError, PermissionQueryError, Policy, PolicyId,
-    PolicySet, Request, RequestValidationError, RestrictedExpression, Schema,
+    PolicySet, Request, RequestEnv, RequestValidationError, RestrictedExpression, Schema,
     TpeReauthorizationError,
 };
 
@@ -425,6 +425,20 @@ impl<'a> AsRef<tpe::response::Response<'a>> for TpeResponse<'a> {
 }
 
 impl TpeResponse<'_> {
+    /// Get the request environment used to calculate this TPE response.
+    pub fn request_env(&self) -> RequestEnv {
+        RequestEnv::new(
+            EntityTypeName(self.0.request().principal_type().clone()),
+            EntityUid(self.0.request().action().clone()),
+            EntityTypeName(self.0.request().resource_type().clone()),
+        )
+    }
+
+    /// Get the schema used to calculate this TPE response.
+    pub fn schema(&self) -> Schema {
+        Schema(self.0.schema().clone())
+    }
+
     /// Get the authorization decision, if TPE reached a concrete decision.
     ///
     /// This function can return three possible values:

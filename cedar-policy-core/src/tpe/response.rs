@@ -194,6 +194,16 @@ impl<'a> Response<'a> {
         }
     }
 
+    /// Get the request environment used to calculate this TPE response.
+    pub fn request(&self) -> &'a PartialRequest {
+        self.request
+    }
+
+    /// Get the schema used to calculate this TPE response.
+    pub fn schema(&self) -> &'a ValidatorSchema {
+        self.schema
+    }
+
     /// Get satisfied permit residual policies
     pub fn true_permits(&self) -> impl Iterator<Item = &ResidualPolicy> {
         #[expect(
