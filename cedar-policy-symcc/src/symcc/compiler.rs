@@ -33,7 +33,7 @@ use super::env::{SymEntities, SymEnv, SymRequest};
 use super::ext::{Ext, ExtError};
 use super::extfun;
 use super::factory::{
-    self, if_all_some, if_some, is_some, ite, option_get, record_get, record_of, some_of,
+    self, if_all_some, if_some, is_none, is_some, ite, option_get, record_get, record_of, some_of,
 };
 use super::function::UnaryFunction;
 use super::result::CompileError;
@@ -671,7 +671,25 @@ pub fn compile_call(xfn: &cedar_policy_core::ast::Name, ts: Vec<Term>) -> Result
             let t1 = extract_first(ts);
             compile_call1(ExtType::Duration, extfun::to_days, t1)
         }
+        ("iferror", 2) => {
+            let (t1, t2) = extract_first2(ts);
+            compile_iferror(t1, t2)
+        }
         (_, _) => Err(CompileError::TypeError),
+    }
+}
+
+/// Symbolic `iferror(e, d)`: an error is a `none` term, so the result is
+/// `d` where `e` is `none` and `e` otherwise — `ite(is_none(e), d, e)`. Both
+/// arguments must be `Option Bool` terms (the validator's `(Bool, Bool) ->
+/// Bool` signature). The lazy evaluation of `d` needs no encoding: terms are
+/// pure, and `d`'s own `none` only shows where it is selected.
+pub fn compile_iferror(t1: Term, t2: Term) -> Result<Term> {
+    let ty = TermType::option_of(TermType::Bool);
+    if t1.type_of() == ty && t2.type_of() == ty {
+        Ok(ite(is_none(t1.clone()), t2, t1))
+    } else {
+        Err(CompileError::TypeError)
     }
 }
 
@@ -1470,5 +1488,85 @@ mod datetime_tests {
             r#"ip("2001:db8::1").isInRange(ip("1:2:3:4::/48"), ip("fe80::/10"))"#,
             false,
         );
+    }
+}
+
+#[cfg(test)]
+#[expect(clippy::panic, reason = "unit tests")]
+mod iferror_tests {
+    use super::*;
+    use crate::symcc::result::CompileError;
+    use cedar_policy::{RequestEnv, Schema};
+    use cool_asserts::assert_matches;
+    use std::str::FromStr;
+
+    fn schema() -> Schema {
+        Schema::from_cedarschema_str(
+            r#"
+            entity Thing;
+            entity User { active: Bool, age: Long, nick?: String };
+            action View appliesTo { principal: [User], resource: [Thing] };
+            "#,
+        )
+        .unwrap_or_else(|e| panic!("{:?}", miette::Report::new(e)))
+        .0
+    }
+
+    fn sym_env() -> SymEnv {
+        let env = RequestEnv::new(
+            "User".parse().unwrap(),
+            "Action::\"View\"".parse().unwrap(),
+            "Thing".parse().unwrap(),
+        );
+        SymEnv::new(&schema(), &env).expect("Malformed sym env.")
+    }
+
+    fn parse_expr(str: &str) -> Expr {
+        Expr::from_str(str).unwrap_or_else(|e| panic!("Could not parse expression: {str}: {e}"))
+    }
+
+    /// `iferror(e, d)` compiles to `ite(is_none(e), d, e)` over the
+    /// arguments' terms.
+    #[test]
+    fn iferror_compiles_to_ite_over_is_none() {
+        let env = sym_env();
+        let e = compile(&parse_expr("principal.age + 1 > 18"), &env).unwrap();
+        let d = compile(&parse_expr("false"), &env).unwrap();
+        let got = compile(&parse_expr("iferror(principal.age + 1 > 18, false)"), &env).unwrap();
+        assert_eq!(got, ite(is_none(e.clone()), d, e));
+        assert_eq!(got.type_of(), TermType::option_of(TermType::Bool));
+    }
+
+    /// Literal arguments fold: `iferror(true, false)` is `some(true)`, and an
+    /// argument that cannot error makes the `ite` collapse to it.
+    #[test]
+    fn iferror_folds_literals() {
+        let env = sym_env();
+        assert_eq!(
+            compile(&parse_expr("iferror(true, false)"), &env).unwrap(),
+            Term::Some(Arc::new(Term::Prim(TermPrim::Bool(true))))
+        );
+        let a = compile(&parse_expr("principal.active"), &env).unwrap();
+        assert_eq!(
+            compile(&parse_expr("iferror(principal.active, false)"), &env).unwrap(),
+            a
+        );
+    }
+
+    /// Non-boolean arguments and a wrong arity are type errors.
+    #[test]
+    fn iferror_rejects_non_booleans() {
+        let env = sym_env();
+        for src in [
+            "iferror(principal.age, false)",
+            "iferror(principal.active, 1)",
+            "iferror(principal.active)",
+        ] {
+            assert_matches!(
+                compile(&parse_expr(src), &env),
+                Err(CompileError::TypeError),
+                "{src}"
+            );
+        }
     }
 }

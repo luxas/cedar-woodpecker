@@ -36,8 +36,8 @@ use crate::{
     term::{Term, TermPrim},
     term_factory::{
         bvadd, bvmul, bvneg, bvnego, bvsaddo, bvsle, bvslt, bvsmulo, bvssubo, bvsub, eq,
-        ext_datetime_val, ext_duration_val, if_all_some, if_false, if_some, is_some, ite, not,
-        option_get, record_get, record_of, set_intersects, set_is_empty, set_member, set_of,
+        ext_datetime_val, ext_duration_val, if_all_some, if_false, if_some, is_none, is_some, ite,
+        not, option_get, record_get, record_of, set_intersects, set_is_empty, set_member, set_of,
         set_subset, some_of, string_like,
     },
     term_type::TermType,
@@ -947,7 +947,26 @@ pub fn compile_call(
             let t1 = extract_first(args);
             compile_call1(ExtType::Duration, extfun::to_days, t1)
         }
+        ("iferror", 2) => {
+            let (t1, t2) = extract_first2(args);
+            compile_iferror(t1, t2)
+        }
         (_, _) => Err(CompileError::TypeError),
+    }
+}
+
+/// Symbolic `iferror(e, d)`: `ite(is_none(e), d, e)` over `Option Bool`
+/// terms (see the unoptimized `symcc::compiler::compile_iferror`); the
+/// footprints are unioned.
+pub fn compile_iferror(arg1: CompileResult, arg2: CompileResult) -> Result<CompileResult> {
+    let ty = TermType::option_of(TermType::Bool);
+    if arg1.term.type_of() == ty && arg2.term.type_of() == ty {
+        Ok(CompileResult {
+            term: ite(is_none(arg1.term.clone()), arg2.term, arg1.term),
+            footprint: arg1.footprint.chain(arg2.footprint),
+        })
+    } else {
+        Err(CompileError::TypeError)
     }
 }
 
