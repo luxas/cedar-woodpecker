@@ -108,7 +108,26 @@
 //! → `split_atoms` (the first split exposes every literal, the second hoists
 //! what the rules introduce), which [`split_policy`] runs on every
 //! (validated) condition.
+//!
+//! # Combining allow and deny policies (Step 4)
+//!
+//! A decision is `allow` exactly when some permit is `true` and no forbid is
+//! — an erroring policy is ignored. [`combine_allow_deny`] rewrites a policy
+//! set into permits only: every permit's `when` is conjoined with, for every
+//! forbid `F = d₁ && … && dₖ` (its full condition), the witness
+//! `!iferror(d₁, false) || (d₁ && (!iferror(d₂, false) || …))` that `F` is not
+//! `true` — the first non-true conjunct decides, and `!iferror(d, false)` is
+//! `true` exactly when `d` is not, never erring for boolean-or-error `d`
+//! ([`iferror`](cedar_policy_core::extensions::iferror), Step 4 part 1). The
+//! witness never errs and is `true` exactly when the forbid is not, so the
+//! combined permit is `true` exactly when the original decision is `allow` —
+//! on every input on which the forbids' conjuncts are boolean-or-error
+//! (everything that validates; for a non-boolean conjunct both the forbid and
+//! its witness fail to be `true`). [`allow_cubes`] then splits the combined
+//! permits into their DNF cubes: the README's allow/deny cross terms, one
+//! allow policy each, `O(k^m)` of them under the budgets.
 
+mod combine;
 mod elim;
 mod interpret;
 mod like;
@@ -124,6 +143,7 @@ use cedar_policy_core::expr_builder::ExprBuilder as _;
 use miette::Diagnostic;
 use thiserror::Error;
 
+pub use combine::{allow_cubes, combine_allow_deny, deny_witness};
 pub use elim::{eliminate_aggregates, normalize_atoms};
 pub use interpret::interpret;
 pub use like::{likes_have_wildcards, rewrite_like};
