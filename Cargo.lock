@@ -430,6 +430,7 @@ dependencies = [
  "linked_hash_set",
  "miette",
  "nonempty",
+ "nonempty-collections",
  "ref-cast",
  "regex",
  "rustc-literal-escaper",
@@ -1735,6 +1736,12 @@ checksum = "9737e026353e5cd0736f98eddae28665118eb6f6600902a7f50db585621fecb6"
 dependencies = [
  "serde",
 ]
+
+[[package]]
+name = "nonempty-collections"
+version = "1.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "988fb92b275335f315a9bddf7a8881a02c79c6084e9a626f656f12c50776a045"
 
 [[package]]
 name = "normalize-line-endings"
