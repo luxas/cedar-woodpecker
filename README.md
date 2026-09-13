@@ -30,6 +30,16 @@ However, I ended up opting for the latter, for two reasons:
 
 I iterated on these feature branch implementations a couple of times in a private fork, but ended up squashing most intermediate detours before publishing these results. Even though the stack of PRs against this repo will all be merged (TODO: add a link here once published), the individual stacked PRs should show a somewhat-sensible (hopefully) diff of individual features, which can then potentially be used as a starting point for actual feature implementation in the future, if desired. Note that while I've glanced the implementation code, I have not reviewed yet the way I normally would, but I intend to do so once the shape of this thing settles and I feel more confident in it.
 
+Where do I find the proof of concept code? In the following PR stacks:
+
+- <https://github.com/luxas/cedar-woodpecker/pull/19>
+- <https://github.com/luxas/cedar-woodpecker-spec/pull/10>
+- <https://github.com/luxas/vscode-cedar-woodpecker/pull/1>
+
+I merged the stacks to `main` in all three repos without (yet) deep review, to get them onto a protected branch, and to make it easier to see what the diff between these woodpecker-named repos and their upstream is.
+If this turns out to be a fruitful direction, I'll anyways re-do all those PRs the way I like them and with proper deep review.
+But for now, exploring and demonstrating the concepts is more important.
+
 Enough spoken about the methods, let's jump to the most important question: why did I spend the last two weeks tinkering with this?
 
 ## Why?
