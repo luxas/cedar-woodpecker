@@ -17,9 +17,12 @@ if ! K api-resources --api-group=networking.k8s.io 2>/dev/null | grep -qw ingres
   exit 3
 fi
 
-# Self-cleanup (see note in deployments-status-updates-parent.sh): new_ns's
-# _track is lost to its subshell under bash 4.2 + set -u, so we track our own
-# objects and delete them on exit, chaining the harness _cleanup.
+# Local cleanup is defensive redundancy: lib.sh uses a FILE-backed cleanup
+# ledger (WP_CLEANUP_FILE) that survives the $(...) subshell of new_ns /
+# grant_cluster, so the harness _cleanup already deletes tracked objects on
+# exit. We additionally track our own objects here (and, for cluster-scoped
+# tests, create them with names we control) and chain our trap ahead of
+# lib's _cleanup.
 WP_OBJS=()
 wp_track() { WP_OBJS+=("$1"); }
 wp_cleanup() {

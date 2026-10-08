@@ -12,11 +12,12 @@
 source "$(dirname "$0")/../lib.sh"
 test_start "deployments-status-updates-parent"
 
-# Self-cleanup: lib.sh's new_ns runs _track inside a command-substitution
-# subshell, so under bash 4.2 + `set -u` the parent's _CLEANUP never sees the
-# namespace and the EXIT trap deletes nothing. We record our own objects by name
-# and delete them on exit, then chain the harness _cleanup. (Local helper only;
-# lib.sh is untouched.)
+# Local cleanup is defensive redundancy: lib.sh uses a FILE-backed cleanup
+# ledger (WP_CLEANUP_FILE) that survives the $(...) subshell of new_ns /
+# grant_cluster, so the harness _cleanup already deletes tracked objects on
+# exit. We additionally track our own objects here (and, for cluster-scoped
+# tests, create them with names we control) and chain our trap ahead of
+# lib's _cleanup.
 WP_OBJS=()
 wp_track() { WP_OBJS+=("$1"); }
 wp_cleanup() {

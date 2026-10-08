@@ -20,15 +20,12 @@
 source "$(dirname "$0")/../lib.sh"
 test_start "flowschema-references-prioritylevel"
 
-# Home namespace just to host the attacker SA; the objects it touches are
-# cluster-scoped.
-#
-# Reliable local cleanup. lib.sh's _track runs inside the $(...) subshell of
-# new_ns/grant_cluster, so lib's EXIT trap deletes nothing (observed leaking
-# namespaces AND cluster-scoped ClusterRoles/Bindings on the shared cluster).
-# We create cluster-scoped objects with names WE control, track them in THIS
-# shell, and chain our trap ahead of lib's _cleanup. (lib.sh bug reported to the
-# parent; this keeps the shared cluster clean meanwhile.)
+# Local cleanup is defensive redundancy: lib.sh uses a FILE-backed cleanup
+# ledger (WP_CLEANUP_FILE) that survives the $(...) subshell of new_ns /
+# grant_cluster, so the harness _cleanup already deletes tracked objects on
+# exit. We additionally track our own objects here (and, for cluster-scoped
+# tests, create them with names we control) and chain our trap ahead of
+# lib's _cleanup.
 _LOCAL_CLEAN=()
 _lclean() { local rc=$?; for ((i=${#_LOCAL_CLEAN[@]}-1; i>=0; i--)); do
   K delete "${_LOCAL_CLEAN[$i]}" --ignore-not-found --wait=false >/dev/null 2>&1 || true; done; return $rc; }
@@ -39,12 +36,12 @@ mk_sa "$home_ns" attacker
 subj="$(sa_subject "$home_ns" attacker)"
 subj_grp="flowcontrol.apiserver.k8s.io"
 
-# ONLY `create` on flowschemas (+get/list to observe its own status).
-# Deliberately NO update/patch/delete, and NO get on
-# prioritylevelconfigurations -- that last absence is the gap we prove. Keeping
-# the write surface to exactly `create` means every effect below is driven by
-# the create path alone. We mint the ClusterRole+Binding with our own names so
-# we can track and delete them (grant_cluster's names are lost to the subshell).
+# Local cleanup is defensive redundancy: lib.sh uses a FILE-backed cleanup
+# ledger (WP_CLEANUP_FILE) that survives the $(...) subshell of new_ns /
+# grant_cluster, so the harness _cleanup already deletes tracked objects on
+# exit. We additionally track our own objects here (and, for cluster-scoped
+# tests, create them with names we control) and chain our trap ahead of
+# lib's _cleanup.
 crole="$(rid wp-fs-crole)"; crb="${crole}-crb"
 _LOCAL_CLEAN+=("clusterrole/$crole" "clusterrolebinding/$crb")
 K apply -f - >/dev/null <<EOF || fail "could not create ClusterRole $crole"

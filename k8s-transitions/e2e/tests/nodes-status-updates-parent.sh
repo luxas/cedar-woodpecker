@@ -22,9 +22,12 @@ fi
 
 test_start "nodes-status-updates-parent"
 
-# Self-cleanup (see note in deployments-status-updates-parent.sh): new_ns's
-# _track is lost to its subshell under bash 4.2 + set -u, so self-track and
-# delete on exit, chaining the harness _cleanup.
+# Local cleanup is defensive redundancy: lib.sh uses a FILE-backed cleanup
+# ledger (WP_CLEANUP_FILE) that survives the $(...) subshell of new_ns /
+# grant_cluster, so the harness _cleanup already deletes tracked objects on
+# exit. We additionally track our own objects here (and, for cluster-scoped
+# tests, create them with names we control) and chain our trap ahead of
+# lib's _cleanup.
 WP_OBJS=()
 wp_track() { WP_OBJS+=("$1"); }
 wp_cleanup() {
@@ -54,26 +57,40 @@ assert_cannot "$subj" update nodes          # THE GAP: lacks q
 assert_cannot "$subj" patch  nodes
 
 marker="wp-node-${RUN_ID}"
-step "attacker PATCHes nodes/status with a WPProbe condition (never touching the parent verb)"
-as_subj "$subj" patch node "$node" --subresource=status --type=merge -p \
-  "{\"status\":{\"conditions\":[{\"type\":\"WPProbe\",\"status\":\"True\",\"reason\":\"wp\",\"message\":\"$marker\",\"lastHeartbeatTime\":\"2024-01-01T00:00:00Z\",\"lastTransitionTime\":\"2024-01-01T00:00:00Z\"}]}}" \
+step "attacker APPENDS a WPProbe condition via nodes/status (never touching the parent verb)"
+# Use a JSON Patch `add` to APPEND to the conditions list, rather than a merge
+# patch that would REPLACE the whole list and wipe the kubelet's real
+# conditions (Ready/MemoryPressure/...), transiently flipping the Node to
+# Unknown. Appending leaves the real conditions intact and the Node Ready.
+as_subj "$subj" patch node "$node" --subresource=status --type=json -p \
+  "[{\"op\":\"add\",\"path\":\"/status/conditions/-\",\"value\":{\"type\":\"WPProbe\",\"status\":\"True\",\"reason\":\"wp\",\"message\":\"$marker\",\"lastHeartbeatTime\":\"2024-01-01T00:00:00Z\",\"lastTransitionTime\":\"2024-01-01T00:00:00Z\"}}]" \
   >/dev/null || fail "attacker could not patch nodes/status"
 
 # EFFECT: the write landed on the parent Node -- `get nodes` (the q the attacker
-# lacks) returns the condition the attacker wrote via /status.
+# lacks) returns, AMONG the conditions, the one the attacker wrote via /status.
 got=""
 for _ in $(seq 1 10); do
-  got="$(K get node "$node" -o jsonpath='{.status.conditions[?(@.type=="WPProbe")].message}' 2>/dev/null)"
-  [ "$got" = "$marker" ] && break
+  got="$(K get node "$node" -o jsonpath='{range .status.conditions[?(@.type=="WPProbe")]}{.message}{"\n"}{end}' 2>/dev/null)"
+  printf '%s\n' "$got" | grep -qxF "$marker" && break
   sleep 1
 done
-assert_eq "$got" "$marker" "status write via /status reached the parent Node object"
-step "attacker's /status write ($marker) is visible on the parent Node via 'get nodes'"
+printf '%s\n' "$got" | grep -qxF "$marker" \
+  || fail "status write via /status did not reach the parent Node (WPProbe messages seen: $(echo $got))"
+# The real conditions must still be present (append must not have wiped them).
+assert_contains "$(K get node "$node" -o jsonpath='{.status.conditions[*].type}')" "Ready" \
+  "the kubelet's real Node conditions were left intact (append, not replace)"
+step "attacker's /status write ($marker) is visible on the parent Node via 'get nodes'; Ready preserved"
 
-# NOTE: the forged WPProbe condition is left on the Node's status. There is no
-# clean kubectl removal of a single status condition by type (a strategic merge
-# cannot delete a list element here), and this test runs ONLY in the parent's
-# isolated environment, which is torn down afterward. The kubelet continues to
-# re-report the real Node conditions regardless; WPProbe is inert/cosmetic.
+# Remove EVERY forged WPProbe condition (admin), one at a time by current index,
+# leaving the kubelet's real conditions untouched -- keeps the shared Node
+# pristine (also mops up any WPProbe left by an earlier run).
+for _ in $(seq 1 10); do
+  idx="$(K get node "$node" -o json 2>/dev/null | python3 -c \
+    "import json,sys; cs=json.load(sys.stdin)['status']['conditions']; print(next((i for i,c in enumerate(cs) if c.get('type')=='WPProbe'),-1))" 2>/dev/null)"
+  [ "${idx:--1}" -ge 0 ] || break
+  K patch node "$node" --subresource=status --type=json -p \
+    "[{\"op\":\"test\",\"path\":\"/status/conditions/$idx/type\",\"value\":\"WPProbe\"},{\"op\":\"remove\",\"path\":\"/status/conditions/$idx\"}]" \
+    >/dev/null 2>&1 || break
+done
 
 test_pass

@@ -11,12 +11,12 @@
 source "$(dirname "$0")/../lib.sh"
 test_start "service-create-creates-endpoints"
 
-# Reliable local cleanup. lib.sh's _track runs inside the $(...) subshell of
-# new_ns/grant_cluster, so the parent-shell _CLEANUP it appends to is lost and
-# lib's EXIT trap deletes nothing (observed leaking namespaces on the shared
-# cluster). We track our own objects in THIS shell and chain our trap ahead of
-# lib's _cleanup so our objects are reliably deleted on exit. (Reported to the
-# parent as a lib.sh bug; this keeps the shared cluster clean meanwhile.)
+# Local cleanup is defensive redundancy: lib.sh uses a FILE-backed cleanup
+# ledger (WP_CLEANUP_FILE) that survives the $(...) subshell of new_ns /
+# grant_cluster, so the harness _cleanup already deletes tracked objects on
+# exit. We additionally track our own objects here (and, for cluster-scoped
+# tests, create them with names we control) and chain our trap ahead of
+# lib's _cleanup.
 _LOCAL_CLEAN=()
 _lclean() { local rc=$?; for ((i=${#_LOCAL_CLEAN[@]}-1; i>=0; i--)); do
   K delete "${_LOCAL_CLEAN[$i]}" --ignore-not-found --wait=false >/dev/null 2>&1 || true; done; return $rc; }

@@ -26,10 +26,12 @@ node="$(K get nodes -o jsonpath='{.items[0].metadata.name}')"
 assert_nonempty "$node" "found the node to target"
 TAINT_KEY="wp-evict-${RUN_ID}"
 
-# Guarantee we remove our taint AND our namespaces no matter how the test ends
-# (new_ns's _track is lost to its subshell under bash 4.2 + set -u, so _cleanup
-# alone would not delete the namespaces; isolation protects other authors only
-# between runs). This keeps the node clean afterward.
+# Local cleanup is defensive redundancy: lib.sh uses a FILE-backed cleanup
+# ledger (WP_CLEANUP_FILE) that survives the $(...) subshell of new_ns /
+# grant_cluster, so the harness _cleanup already deletes tracked objects on
+# exit. We additionally track our own objects here (and, for cluster-scoped
+# tests, create them with names we control) and chain our trap ahead of
+# lib's _cleanup.
 WP_OBJS=()
 wp_track() { WP_OBJS+=("$1"); }
 _untaint() { K taint nodes "$node" "${TAINT_KEY}=1:NoExecute-" >/dev/null 2>&1 || true; }
