@@ -21,7 +21,13 @@ CTX="${WP_E2E_CONTEXT:-kind-wp-e2e}"
 IMG="${WP_E2E_IMAGE:-busybox:1.36}"       # preloaded onto the node by run.sh/setup
 RUN_ID="${RUN_ID:-$(date +%s)}"
 _TESTNAME=""
-_CLEANUP=()                                # resources to delete on exit, LIFO
+# Cleanup ledger is FILE-backed, not a shell array. Helpers like new_ns and
+# grant_cluster run inside a command-substitution subshell ($(...)); an array
+# appended there is lost to the parent shell, so an array-backed ledger would
+# silently track nothing and the EXIT trap would delete nothing (observed on
+# bash 4.2 + `set -u`). A file is shared across subshells, so tracking survives.
+: "${WP_CLEANUP_FILE:=$(mktemp "${TMPDIR:-/tmp}/wp-e2e-cleanup.XXXXXX")}"
+export WP_CLEANUP_FILE
 
 K() { kubectl --context "$CTX" "$@"; }
 
@@ -38,12 +44,15 @@ fail()    { printf '  %sFAIL%s %s: %s\n' "$(_c 31)" "$(_c 0)" "$_TESTNAME" "$*" 
 test_pass() { printf '%sRESULT: PASS %s%s\n' "$(_c 32)" "$_TESTNAME" "$(_c 0)"; exit 0; }
 
 # ---- cleanup ---------------------------------------------------------------
-_track()  { _CLEANUP+=("$1"); }           # e.g. _track "namespace/foo"  _track "clusterrole/bar"
+_track()  { printf '%s\n' "$1" >> "$WP_CLEANUP_FILE"; }   # e.g. _track "namespace/foo"
 _cleanup() {
-  local rc=$?
-  for ((i=${#_CLEANUP[@]}-1; i>=0; i--)); do
-    K delete "${_CLEANUP[$i]}" --ignore-not-found --wait=false >/dev/null 2>&1 || true
+  local rc=$? line
+  [ -f "$WP_CLEANUP_FILE" ] || return $rc
+  # delete in reverse (LIFO) so children go before the namespaces that hold them
+  tac "$WP_CLEANUP_FILE" 2>/dev/null | while IFS= read -r line; do
+    [ -n "$line" ] && K delete "$line" --ignore-not-found --wait=false >/dev/null 2>&1 || true
   done
+  rm -f "$WP_CLEANUP_FILE"
   return $rc
 }
 

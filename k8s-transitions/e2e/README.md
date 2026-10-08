@@ -35,7 +35,30 @@ pipeline). SKIPs are honest gaps, never disguised passes.
 ./teardown.sh       # delete the cluster
 ```
 
+Two tests mutate the single shared Node (taint eviction, Node status) and would
+evict other tests' Pods, so under the normal runner they self-SKIP. Run them
+one at a time, isolated, with the opt-in env var:
+
+```bash
+WP_E2E_ALLOW_NODE=1 bash tests/node-deletes-pods.sh
+WP_E2E_ALLOW_NODE=1 bash tests/nodes-status-updates-parent.sh
+```
+
 Requires `kind`, `kubectl`, `docker` on `PATH`.
+
+## Results (kind v1.37.0, Node,RBAC)
+
+61 transitions → **56 PASS, 0 FAIL, 5 SKIP**. The 2 node tests above PASS when
+run isolated; the normal runner reports them as SKIP (that is why `run.sh`
+alone shows 54 PASS / 7 SKIP). The 5 genuine SKIPs are environment/model
+boundaries, each with its reason printed, not failures:
+
+| SKIP | Why |
+|---|---|
+| `pod-update-reads-configmap`, `pod-update-reads-secret` | `ValidatePodUpdate` forbids adding a Secret/ConfigMap ref to an existing Pod, so `update pods` cannot reach the object; the create-path twins (`pod-create-reads-*`) prove the leak live. |
+| `csr-approval-issues-cert` | Approving a CSR for a built-in signer needs `approve` on `signers/<signerName>` in addition to `update certificatesigningrequests/approval`; the modeled single permission is operationally insufficient (the signer controller does issue once that grant is added). |
+| `storageclass-create-creates-pv` | A StorageClass alone creates no PV; dynamic provisioning is provisioner-mediated and demand-driven (needs a PVC + a consuming Pod under WaitForFirstConsumer). |
+| `apiservice-reaches-services` | The aggregator's get/watch of the backing Service needs a real extension apiserver behind the APIService, which vanilla single-node kind does not have. |
 
 ## The cluster
 
