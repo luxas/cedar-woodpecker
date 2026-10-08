@@ -1,6 +1,6 @@
 # create StorageClass → create PersistentVolume
 
-**Paper:** Yang et al., CCS '25 §implicit-permission catalogue; severity **Medium** (classification.txt — a cluster-scoped provisioning path that mints PVs on the principal's behalf).
+**Paper:** Yang et al., CCS '25 §implicit-permission catalogue; severity **Low** (classification.txt, the `# low` bucket; a cluster-scoped provisioning path that mints PVs on the principal's behalf).
 Reference(s) formalized (from `assessment/trigger.txt`):
 - `create storageclasses --> create persistentvolumes`
 
@@ -78,7 +78,7 @@ permit(
   consequence (a PV of this class comes into existence) rather than the two-step
   PVC→PV chain, which is the capability the paper flags: a StorageClass author
   influences PV creation parameters (provisioner, mount options, reclaim policy).
-- **Severity Medium.** PVs are cluster-scoped and provisioning can consume backend
+- **Severity Low** (`classification.txt` `# low` bucket). PVs are cluster-scoped and provisioning can consume backend
   storage, but the author controls provisioning parameters rather than reading
   another tenant's data; the risk is resource/parameter abuse and reclaim-policy
   surprises.

@@ -1,6 +1,6 @@
 # create Pod → create PodSchedulingContext
 
-**Paper:** Yang et al., CCS '25 §4 (implicit permissions of workload creation); severity **Medium** (classification.txt, `# medium` bucket).
+**Paper:** Yang et al., CCS '25 §4 (implicit permissions of workload creation); severity **Low** (classification.txt, `# low` bucket).
 Reference(s) formalized (from `assessment/trigger.txt`):
 - `create pods --> create podschedulingcontexts`
 
@@ -43,6 +43,6 @@ would be `source create/core::pods → target create/<the PSC entity>` with
 - This is a schema-coverage gap, distinct from the deny-side case in HARD RULE 5:
   the mechanism IS a permit a principal gains (not a deny), so it would be
   synthesizable against a schema that modeled the entity.
-- Severity Medium per the paper: a stray `PodSchedulingContext` is a scheduling
+- Severity Low (`classification.txt` `# low` bucket): a stray `PodSchedulingContext` is a scheduling
   side effect rather than a direct data read, but DRA coordination objects can
   influence where/whether workloads land.

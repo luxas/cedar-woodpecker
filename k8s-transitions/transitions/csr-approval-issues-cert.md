@@ -25,7 +25,7 @@ strategy only touches the Approved/Denied conditions; it is split out from the
 main CSR store precisely so that `approve` authority can be granted separately.
 Approving drives the signer to produce `status.certificate`.
 
-Source: [`ApprovalREST.Update`](https://github.com/kubernetes/kubernetes/blob/788c4eca67a3ba878ead2385db1f4e274f9fd3a9/pkg/registry/certificates/certificates/storage/storage.go#L145) — the `/approval` subresource writer, built from the shared store with the [`ApprovalStrategy`](https://github.com/kubernetes/kubernetes/blob/788c4eca67a3ba878ead2385db1f4e274f9fd3a9/pkg/registry/certificates/certificates/storage/storage.go#L69).
+Source: [`ApprovalREST.Update`](https://github.com/kubernetes/kubernetes/blob/788c4eca67a3ba878ead2385db1f4e274f9fd3a9/pkg/registry/certificates/certificates/storage/storage.go#L145) — the `/approval` subresource writer, built from the shared store with the [`ApprovalStrategy`](https://github.com/kubernetes/kubernetes/blob/788c4eca67a3ba878ead2385db1f4e274f9fd3a9/pkg/registry/certificates/certificates/storage/storage.go#L70) (`approvalStore := *store; approvalStore.UpdateStrategy = csrregistry.ApprovalStrategy`).
 Source: [`csrApprovalStrategy.ValidateUpdate`](https://github.com/kubernetes/kubernetes/blob/788c4eca67a3ba878ead2385db1f4e274f9fd3a9/pkg/registry/certificates/certificates/strategy.go#L296) — "Updating the approval should only update the conditions", confirming this subresource is exactly the approve/deny lever on the parent CSR.
 
 ## Transition function

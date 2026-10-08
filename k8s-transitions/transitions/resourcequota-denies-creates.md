@@ -6,7 +6,7 @@
 > transition to emit. No `.json`/`.cedar` ships for this entry and `verify.sh`
 > skips it.
 
-**Paper:** Yang et al., CCS '25; severity **High** (classification.txt).
+**Paper:** Yang et al., CCS '25; severity **Low** (classification.txt — the `# low` bucket; a namespace-scoped quota is enforcement, not a privilege gain).
 Reference(s) formalized (from `assessment/trigger.txt`) — the full
 `create/update/patch resourcequotas --> deny create <object>` family, 33 rows:
 
@@ -103,7 +103,7 @@ completeness and marked deny-side.
 
 ## Modeling notes
 
-- Severity **High** in the paper: a namespace-scoped DoS lever — a compromised
+- Severity **Low** in `classification.txt` (the `# low` bucket): deny-side enforcement, not a privilege the principal gains. (Operationally it is still a namespace-scoped availability lever — a compromised
   principal with quota-write can freeze all new workloads/secrets/config in the
   namespace without touching any of those objects directly.
 - The 33 rows collapse to a single mechanism: one admission plugin, parameterized

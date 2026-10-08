@@ -115,5 +115,7 @@ All line numbers pin `kubernetes/kubernetes@788c4eca67a3ba878ead2385db1f4e274f9f
 | `autoscaling::horizontalpodautoscalers` | `scaleTargetName` | `String` | `Spec.ScaleTargetRef.Name` | HPA spec |
 | `io::k8s::apiserver::flowcontrol::flowschemas` | `priorityLevelName` | `String` | `Spec.PriorityLevelConfiguration.Name` | FlowSchema spec |
 
-Each field is marked in `k8s.cedarschema` with a `// … [derived, see SCHEMA.md]`
-comment so a reader can tell the generated schema apart from these additions.
+Each derived field is marked in `k8s.cedarschema` with a derived-field comment —
+either the block header `// --- woodpecker derived fields (see SCHEMA.md) ---`
+(the Pod projections) or an inline `// … [derived, see SCHEMA.md]` / `[derived]`
+note — so a reader can tell the generated schema apart from these additions.

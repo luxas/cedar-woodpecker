@@ -3,8 +3,10 @@
 **Paper:** Yang et al., CCS '25 §4.5.2 (the paper's worked static-analysis example:
 "the `NodeController` invokes `deletePodHandler` when handling a node update
 event … the explicit permission `update Node` leads to the implicit permission
-`delete Pod`"); severity **High** (DoS) for `delete/update/patch nodes` per
-`assessment/classification.txt`.
+`delete Pod`"); severity per `assessment/classification.txt`: **Critical** for
+`update nodes --> delete pods` and `patch nodes --> delete pods` (the `# Critical`
+bucket — tainting a Node evicts others' Pods), **High** (DoS) for
+`delete nodes --> delete pods`.
 
 Reference(s) formalized (from `assessment/trigger.txt`):
 - `delete nodes --> delete pods`
@@ -107,5 +109,7 @@ policy allowed deleting.
 - **`update`/`patch` variants.** Modeled as the same mechanism (taint eviction).
   A tighter encoding would gate on the taint being `NoExecute`, which needs a
   derived `core::nodes.noExecuteTaints: Set<String>` field; left as future work.
-- Severity **High** matches `classification.txt` (DoS); the paper uses this
+- Severity: **Critical** for the `update`/`patch nodes → delete pods` rows
+  (`classification.txt` `# Critical`) and **High** (DoS) for `delete nodes →
+  delete pods`. The paper uses this
   edge as its canonical trace-based static-analysis finding.
