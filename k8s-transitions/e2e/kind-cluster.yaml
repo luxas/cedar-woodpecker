@@ -1,0 +1,21 @@
+# kind cluster config for the implicit-permission e2e suite.
+#
+# The host CI image runs cgroup v1. Two deviations from a default kind cluster
+# are needed, neither of which affects authorization behaviour:
+#   1. failCgroupV1: false   -- kubelet >=1.36 refuses cgroup v1 by default.
+#   2. cgroupfs driver (kubelet + containerd) -- on this cgroup v1 host, systemd
+#      does not reliably delegate the kubelet.slice the systemd driver needs
+#      ("failed to initialize top level QOS containers ... missing paths
+#      .../kubelet.slice/kubelet-kubepods.slice"); the cgroupfs driver creates
+#      the cgroup paths directly and boots reliably.
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+containerdConfigPatches:
+- |-
+  [plugins."io.containerd.grpc.v1.cri".containerd.runtimes.runc.options]
+    SystemdCgroup = false
+kubeadmConfigPatches:
+- |
+  kind: KubeletConfiguration
+  failCgroupV1: false
+  cgroupDriver: cgroupfs
