@@ -1,0 +1,7 @@
+{ "transitions": [ {
+  "name": "pod-create-reads-pvc",
+  "principal": ["k8s::User"],
+  "sources": [ { "action": "k8s::Action::\"create\"", "resource": "core::pods" } ],
+  "target":  { "action": "k8s::Action::\"get\"", "resource": "core::persistentvolumeclaims" },
+  "when": "context.resource1.namespace == resource.namespace && context.resource1.pvcRefs.contains(resource.name)"
+} ] }

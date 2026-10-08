@@ -1,0 +1,7 @@
+{ "transitions": [ {
+  "name": "rolebinding-binds-role",
+  "principal": ["k8s::User"],
+  "sources": [ { "action": "k8s::Action::\"create\"", "resource": "io::k8s::authorization::rbac::rolebindings" } ],
+  "target":  { "action": "k8s::Action::\"bind\"", "resource": "k8s::Resource" },
+  "when": "resource.resourceCombined == \"roles\""
+} ] }

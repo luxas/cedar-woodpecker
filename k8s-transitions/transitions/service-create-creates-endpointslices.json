@@ -1,0 +1,7 @@
+{ "transitions": [ {
+  "name": "service-create-creates-endpointslices",
+  "principal": ["k8s::User"],
+  "sources": [ { "action": "k8s::Action::\"create\"", "resource": "core::services" } ],
+  "target":  { "action": "k8s::Action::\"create\"", "resource": "io::k8s::discovery::endpointslices" },
+  "when": "resource.namespace == context.resource1.namespace"
+} ] }

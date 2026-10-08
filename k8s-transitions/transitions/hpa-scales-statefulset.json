@@ -1,0 +1,7 @@
+{ "transitions": [ {
+  "name": "hpa-scales-statefulset",
+  "principal": ["k8s::User"],
+  "sources": [ { "action": "k8s::Action::\"create\"", "resource": "autoscaling::horizontalpodautoscalers" } ],
+  "target":  { "action": "k8s::Action::\"patch\"", "resource": "apps::statefulsets" },
+  "when": "context.resource1.scaleTargetKind == \"StatefulSet\" && context.resource1.scaleTargetName == resource.name && resource.namespace == context.resource1.namespace"
+} ] }

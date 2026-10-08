@@ -1,0 +1,7 @@
+{ "transitions": [ {
+  "name": "cronjob-create-creates-job",
+  "principal": ["k8s::User"],
+  "sources": [ { "action": "k8s::Action::\"create\"", "resource": "batch::cronjobs" } ],
+  "target":  { "action": "k8s::Action::\"create\"", "resource": "batch::jobs" },
+  "when": "resource.namespace == context.resource1.namespace"
+} ] }

@@ -1,0 +1,7 @@
+{ "transitions": [ {
+  "name": "pods-status-reads-parent",
+  "principal": ["k8s::User"],
+  "sources": [ { "action": "k8s::Action::\"get\"", "resource": "core::pods_status" } ],
+  "target":  { "action": "k8s::Action::\"get\"", "resource": "core::pods" },
+  "when": "resource.name == context.resource1.name && resource.namespace == context.resource1.namespace"
+} ] }

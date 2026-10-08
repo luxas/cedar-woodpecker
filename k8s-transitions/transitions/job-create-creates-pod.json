@@ -1,0 +1,7 @@
+{ "transitions": [ {
+  "name": "job-create-creates-pod",
+  "principal": ["k8s::User"],
+  "sources": [ { "action": "k8s::Action::\"create\"", "resource": "batch::jobs" } ],
+  "target":  { "action": "k8s::Action::\"create\"", "resource": "core::pods" },
+  "when": "resource.namespace == context.resource1.namespace"
+} ] }

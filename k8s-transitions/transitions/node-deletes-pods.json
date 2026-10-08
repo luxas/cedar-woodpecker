@@ -1,0 +1,7 @@
+{ "transitions": [ {
+  "name": "node-deletes-pods",
+  "principal": ["k8s::User"],
+  "sources": [ { "action": "k8s::Action::\"delete\"", "resource": "core::nodes" } ],
+  "target":  { "action": "k8s::Action::\"delete\"", "resource": "core::pods" },
+  "when": "resource.nodeName == context.resource1.name"
+} ] }

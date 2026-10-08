@@ -1,0 +1,7 @@
+{ "transitions": [ {
+  "name": "deployment-create-creates-replicaset",
+  "principal": ["k8s::User"],
+  "sources": [ { "action": "k8s::Action::\"create\"", "resource": "apps::deployments" } ],
+  "target":  { "action": "k8s::Action::\"create\"", "resource": "apps::replicasets" },
+  "when": "resource.namespace == context.resource1.namespace"
+} ] }

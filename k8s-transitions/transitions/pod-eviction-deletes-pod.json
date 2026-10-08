@@ -1,0 +1,7 @@
+{ "transitions": [ {
+  "name": "pod-eviction-deletes-pod",
+  "principal": ["k8s::User"],
+  "sources": [ { "action": "k8s::Action::\"create\"", "resource": "core::pods_eviction" } ],
+  "target":  { "action": "k8s::Action::\"delete\"", "resource": "core::pods" },
+  "when": "context.resource1.name == resource.name && context.resource1.namespace == resource.namespace"
+} ] }

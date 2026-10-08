@@ -1,0 +1,7 @@
+{ "transitions": [ {
+  "name": "storageclass-create-creates-pv",
+  "principal": ["k8s::User"],
+  "sources": [ { "action": "k8s::Action::\"create\"", "resource": "io::k8s::storage::storageclasses" } ],
+  "target":  { "action": "k8s::Action::\"create\"", "resource": "core::persistentvolumes" },
+  "when": "resource.storageClassName == context.resource1.name"
+} ] }

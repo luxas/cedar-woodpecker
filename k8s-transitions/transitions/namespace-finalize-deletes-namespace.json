@@ -1,0 +1,7 @@
+{ "transitions": [ {
+  "name": "namespace-finalize-deletes-namespace",
+  "principal": ["k8s::User"],
+  "sources": [ { "action": "k8s::Action::\"update\"", "resource": "core::namespaces_finalize" } ],
+  "target":  { "action": "k8s::Action::\"delete\"", "resource": "core::namespaces" },
+  "when": "resource.name == context.resource1.name"
+} ] }

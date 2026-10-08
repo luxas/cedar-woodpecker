@@ -1,0 +1,7 @@
+{ "transitions": [ {
+  "name": "pod-create-reads-namespace",
+  "principal": ["k8s::User"],
+  "sources": [ { "action": "k8s::Action::\"create\"", "resource": "core::pods" } ],
+  "target":  { "action": "k8s::Action::\"get\"", "resource": "core::namespaces" },
+  "when": "context.resource1.namespace.name == resource.name"
+} ] }

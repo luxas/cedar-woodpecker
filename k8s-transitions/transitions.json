@@ -1,0 +1,1041 @@
+{
+  "transitions": [
+    {
+      "name": "apiservice-reaches-services",
+      "principal": [
+        "k8s::User"
+      ],
+      "sources": [
+        {
+          "action": "k8s::Action::\"create\"",
+          "resource": "io::k8s::apiregistration::apiservices"
+        }
+      ],
+      "target": {
+        "action": "k8s::Action::\"get\"",
+        "resource": "core::services"
+      },
+      "when": "true"
+    },
+    {
+      "name": "clusterrolebinding-grants-all",
+      "principal": [
+        "k8s::User"
+      ],
+      "sources": [
+        {
+          "action": "k8s::Action::\"create\"",
+          "resource": "io::k8s::authorization::rbac::clusterrolebindings"
+        }
+      ],
+      "target": {
+        "action": "k8s::Action::\"*\"",
+        "resource": "k8s::Resource"
+      },
+      "when": "true"
+    },
+    {
+      "name": "cronjob-create-creates-job",
+      "principal": [
+        "k8s::User"
+      ],
+      "sources": [
+        {
+          "action": "k8s::Action::\"create\"",
+          "resource": "batch::cronjobs"
+        }
+      ],
+      "target": {
+        "action": "k8s::Action::\"create\"",
+        "resource": "batch::jobs"
+      },
+      "when": "resource.namespace == context.resource1.namespace"
+    },
+    {
+      "name": "csr-approval-issues-cert",
+      "principal": [
+        "k8s::User"
+      ],
+      "sources": [
+        {
+          "action": "k8s::Action::\"update\"",
+          "resource": "io::k8s::certificates::certificatesigningrequests_approval"
+        }
+      ],
+      "target": {
+        "action": "k8s::Action::\"update\"",
+        "resource": "io::k8s::certificates::certificatesigningrequests"
+      },
+      "when": "resource.name == context.resource1.name"
+    },
+    {
+      "name": "daemonset-create-creates-controllerrevision",
+      "principal": [
+        "k8s::User"
+      ],
+      "sources": [
+        {
+          "action": "k8s::Action::\"create\"",
+          "resource": "apps::daemonsets"
+        }
+      ],
+      "target": {
+        "action": "k8s::Action::\"create\"",
+        "resource": "apps::controllerrevisions"
+      },
+      "when": "resource.namespace == context.resource1.namespace"
+    },
+    {
+      "name": "daemonset-create-creates-pod",
+      "principal": [
+        "k8s::User"
+      ],
+      "sources": [
+        {
+          "action": "k8s::Action::\"create\"",
+          "resource": "apps::daemonsets"
+        }
+      ],
+      "target": {
+        "action": "k8s::Action::\"create\"",
+        "resource": "core::pods"
+      },
+      "when": "resource.namespace == context.resource1.namespace"
+    },
+    {
+      "name": "deployment-create-creates-pod",
+      "principal": [
+        "k8s::User"
+      ],
+      "sources": [
+        {
+          "action": "k8s::Action::\"create\"",
+          "resource": "apps::deployments"
+        }
+      ],
+      "target": {
+        "action": "k8s::Action::\"create\"",
+        "resource": "core::pods"
+      },
+      "when": "resource.namespace == context.resource1.namespace"
+    },
+    {
+      "name": "deployment-create-creates-replicaset",
+      "principal": [
+        "k8s::User"
+      ],
+      "sources": [
+        {
+          "action": "k8s::Action::\"create\"",
+          "resource": "apps::deployments"
+        }
+      ],
+      "target": {
+        "action": "k8s::Action::\"create\"",
+        "resource": "apps::replicasets"
+      },
+      "when": "resource.namespace == context.resource1.namespace"
+    },
+    {
+      "name": "deployment-scale-scales-pods",
+      "principal": [
+        "k8s::User"
+      ],
+      "sources": [
+        {
+          "action": "k8s::Action::\"update\"",
+          "resource": "apps::deployments_scale"
+        }
+      ],
+      "target": {
+        "action": "k8s::Action::\"create\"",
+        "resource": "core::pods"
+      },
+      "when": "resource.namespace == context.resource1.namespace"
+    },
+    {
+      "name": "deployments-status-updates-parent",
+      "principal": [
+        "k8s::User"
+      ],
+      "sources": [
+        {
+          "action": "k8s::Action::\"update\"",
+          "resource": "apps::deployments_status"
+        }
+      ],
+      "target": {
+        "action": "k8s::Action::\"update\"",
+        "resource": "apps::deployments"
+      },
+      "when": "resource.name == context.resource1.name && resource.namespace == context.resource1.namespace"
+    },
+    {
+      "name": "flowschema-references-prioritylevel",
+      "principal": [
+        "k8s::User"
+      ],
+      "sources": [
+        {
+          "action": "k8s::Action::\"create\"",
+          "resource": "io::k8s::apiserver::flowcontrol::flowschemas"
+        }
+      ],
+      "target": {
+        "action": "k8s::Action::\"get\"",
+        "resource": "io::k8s::apiserver::flowcontrol::prioritylevelconfigurations"
+      },
+      "when": "resource.name == context.resource1.priorityLevelName"
+    },
+    {
+      "name": "hpa-scales-deployment",
+      "principal": [
+        "k8s::User"
+      ],
+      "sources": [
+        {
+          "action": "k8s::Action::\"create\"",
+          "resource": "autoscaling::horizontalpodautoscalers"
+        }
+      ],
+      "target": {
+        "action": "k8s::Action::\"patch\"",
+        "resource": "apps::deployments"
+      },
+      "when": "context.resource1.scaleTargetKind == \"Deployment\" && context.resource1.scaleTargetName == resource.name && resource.namespace == context.resource1.namespace"
+    },
+    {
+      "name": "hpa-scales-replicaset",
+      "principal": [
+        "k8s::User"
+      ],
+      "sources": [
+        {
+          "action": "k8s::Action::\"create\"",
+          "resource": "autoscaling::horizontalpodautoscalers"
+        }
+      ],
+      "target": {
+        "action": "k8s::Action::\"patch\"",
+        "resource": "apps::replicasets"
+      },
+      "when": "context.resource1.scaleTargetKind == \"ReplicaSet\" && context.resource1.scaleTargetName == resource.name && resource.namespace == context.resource1.namespace"
+    },
+    {
+      "name": "hpa-scales-replicationcontroller",
+      "principal": [
+        "k8s::User"
+      ],
+      "sources": [
+        {
+          "action": "k8s::Action::\"create\"",
+          "resource": "autoscaling::horizontalpodautoscalers"
+        }
+      ],
+      "target": {
+        "action": "k8s::Action::\"patch\"",
+        "resource": "core::replicationcontrollers"
+      },
+      "when": "context.resource1.scaleTargetKind == \"ReplicationController\" && context.resource1.scaleTargetName == resource.name && resource.namespace == context.resource1.namespace"
+    },
+    {
+      "name": "hpa-scales-statefulset",
+      "principal": [
+        "k8s::User"
+      ],
+      "sources": [
+        {
+          "action": "k8s::Action::\"create\"",
+          "resource": "autoscaling::horizontalpodautoscalers"
+        }
+      ],
+      "target": {
+        "action": "k8s::Action::\"patch\"",
+        "resource": "apps::statefulsets"
+      },
+      "when": "context.resource1.scaleTargetKind == \"StatefulSet\" && context.resource1.scaleTargetName == resource.name && resource.namespace == context.resource1.namespace"
+    },
+    {
+      "name": "ingresses-status-reads-parent",
+      "principal": [
+        "k8s::User"
+      ],
+      "sources": [
+        {
+          "action": "k8s::Action::\"get\"",
+          "resource": "io::k8s::networking::ingresses_status"
+        }
+      ],
+      "target": {
+        "action": "k8s::Action::\"get\"",
+        "resource": "io::k8s::networking::ingresses"
+      },
+      "when": "resource.name == context.resource1.name && resource.namespace == context.resource1.namespace"
+    },
+    {
+      "name": "job-create-creates-pod",
+      "principal": [
+        "k8s::User"
+      ],
+      "sources": [
+        {
+          "action": "k8s::Action::\"create\"",
+          "resource": "batch::jobs"
+        }
+      ],
+      "target": {
+        "action": "k8s::Action::\"create\"",
+        "resource": "core::pods"
+      },
+      "when": "resource.namespace == context.resource1.namespace"
+    },
+    {
+      "name": "jobs-status-reads-parent",
+      "principal": [
+        "k8s::User"
+      ],
+      "sources": [
+        {
+          "action": "k8s::Action::\"get\"",
+          "resource": "batch::jobs_status"
+        }
+      ],
+      "target": {
+        "action": "k8s::Action::\"get\"",
+        "resource": "batch::jobs"
+      },
+      "when": "resource.name == context.resource1.name && resource.namespace == context.resource1.namespace"
+    },
+    {
+      "name": "namespace-create-seeds-configmap",
+      "principal": [
+        "k8s::User"
+      ],
+      "sources": [
+        {
+          "action": "k8s::Action::\"create\"",
+          "resource": "core::namespaces"
+        }
+      ],
+      "target": {
+        "action": "k8s::Action::\"create\"",
+        "resource": "core::configmaps"
+      },
+      "when": "resource.namespace.name == context.resource1.name"
+    },
+    {
+      "name": "namespace-create-seeds-serviceaccount",
+      "principal": [
+        "k8s::User"
+      ],
+      "sources": [
+        {
+          "action": "k8s::Action::\"create\"",
+          "resource": "core::namespaces"
+        }
+      ],
+      "target": {
+        "action": "k8s::Action::\"create\"",
+        "resource": "core::serviceaccounts"
+      },
+      "when": "resource.namespace.name == context.resource1.name"
+    },
+    {
+      "name": "namespace-delete-deletes-configmaps",
+      "principal": [
+        "k8s::User"
+      ],
+      "sources": [
+        {
+          "action": "k8s::Action::\"delete\"",
+          "resource": "core::namespaces"
+        }
+      ],
+      "target": {
+        "action": "k8s::Action::\"delete\"",
+        "resource": "core::configmaps"
+      },
+      "when": "resource.namespace.name == context.resource1.name"
+    },
+    {
+      "name": "namespace-delete-deletes-deployments",
+      "principal": [
+        "k8s::User"
+      ],
+      "sources": [
+        {
+          "action": "k8s::Action::\"delete\"",
+          "resource": "core::namespaces"
+        }
+      ],
+      "target": {
+        "action": "k8s::Action::\"delete\"",
+        "resource": "apps::deployments"
+      },
+      "when": "resource.namespace.name == context.resource1.name"
+    },
+    {
+      "name": "namespace-delete-deletes-pods",
+      "principal": [
+        "k8s::User"
+      ],
+      "sources": [
+        {
+          "action": "k8s::Action::\"delete\"",
+          "resource": "core::namespaces"
+        }
+      ],
+      "target": {
+        "action": "k8s::Action::\"delete\"",
+        "resource": "core::pods"
+      },
+      "when": "resource.namespace.name == context.resource1.name"
+    },
+    {
+      "name": "namespace-delete-deletes-secrets",
+      "principal": [
+        "k8s::User"
+      ],
+      "sources": [
+        {
+          "action": "k8s::Action::\"delete\"",
+          "resource": "core::namespaces"
+        }
+      ],
+      "target": {
+        "action": "k8s::Action::\"delete\"",
+        "resource": "core::secrets"
+      },
+      "when": "resource.namespace.name == context.resource1.name"
+    },
+    {
+      "name": "namespace-finalize-deletes-namespace",
+      "principal": [
+        "k8s::User"
+      ],
+      "sources": [
+        {
+          "action": "k8s::Action::\"update\"",
+          "resource": "core::namespaces_finalize"
+        }
+      ],
+      "target": {
+        "action": "k8s::Action::\"delete\"",
+        "resource": "core::namespaces"
+      },
+      "when": "resource.name == context.resource1.name"
+    },
+    {
+      "name": "namespace-finalize-updates-namespace",
+      "principal": [
+        "k8s::User"
+      ],
+      "sources": [
+        {
+          "action": "k8s::Action::\"update\"",
+          "resource": "core::namespaces_finalize"
+        }
+      ],
+      "target": {
+        "action": "k8s::Action::\"update\"",
+        "resource": "core::namespaces"
+      },
+      "when": "resource.name == context.resource1.name"
+    },
+    {
+      "name": "node-deletes-pods",
+      "principal": [
+        "k8s::User"
+      ],
+      "sources": [
+        {
+          "action": "k8s::Action::\"delete\"",
+          "resource": "core::nodes"
+        }
+      ],
+      "target": {
+        "action": "k8s::Action::\"delete\"",
+        "resource": "core::pods"
+      },
+      "when": "resource.nodeName == context.resource1.name"
+    },
+    {
+      "name": "nodes-status-updates-parent",
+      "principal": [
+        "k8s::User"
+      ],
+      "sources": [
+        {
+          "action": "k8s::Action::\"update\"",
+          "resource": "core::nodes_status"
+        }
+      ],
+      "target": {
+        "action": "k8s::Action::\"update\"",
+        "resource": "core::nodes"
+      },
+      "when": "resource.name == context.resource1.name"
+    },
+    {
+      "name": "pod-create-mints-sa-token",
+      "principal": [
+        "k8s::User"
+      ],
+      "sources": [
+        {
+          "action": "k8s::Action::\"create\"",
+          "resource": "core::pods"
+        }
+      ],
+      "target": {
+        "action": "k8s::Action::\"create\"",
+        "resource": "core::serviceaccounts_token"
+      },
+      "when": "resource.namespace == context.resource1.namespace && resource.name == context.resource1.serviceAccountRef"
+    },
+    {
+      "name": "pod-create-reads-configmap",
+      "principal": [
+        "k8s::User"
+      ],
+      "sources": [
+        {
+          "action": "k8s::Action::\"create\"",
+          "resource": "core::pods"
+        }
+      ],
+      "target": {
+        "action": "k8s::Action::\"get\"",
+        "resource": "core::configmaps"
+      },
+      "when": "context.resource1.namespace == resource.namespace && context.resource1.configMapRefs.contains(resource.name)"
+    },
+    {
+      "name": "pod-create-reads-namespace",
+      "principal": [
+        "k8s::User"
+      ],
+      "sources": [
+        {
+          "action": "k8s::Action::\"create\"",
+          "resource": "core::pods"
+        }
+      ],
+      "target": {
+        "action": "k8s::Action::\"get\"",
+        "resource": "core::namespaces"
+      },
+      "when": "context.resource1.namespace.name == resource.name"
+    },
+    {
+      "name": "pod-create-reads-node",
+      "principal": [
+        "k8s::User"
+      ],
+      "sources": [
+        {
+          "action": "k8s::Action::\"create\"",
+          "resource": "core::pods"
+        }
+      ],
+      "target": {
+        "action": "k8s::Action::\"get\"",
+        "resource": "core::nodes"
+      },
+      "when": "context.resource1.nodeName == resource.name"
+    },
+    {
+      "name": "pod-create-reads-pvc",
+      "principal": [
+        "k8s::User"
+      ],
+      "sources": [
+        {
+          "action": "k8s::Action::\"create\"",
+          "resource": "core::pods"
+        }
+      ],
+      "target": {
+        "action": "k8s::Action::\"get\"",
+        "resource": "core::persistentvolumeclaims"
+      },
+      "when": "context.resource1.namespace == resource.namespace && context.resource1.pvcRefs.contains(resource.name)"
+    },
+    {
+      "name": "pod-create-reads-secret",
+      "principal": [
+        "k8s::User"
+      ],
+      "sources": [
+        {
+          "action": "k8s::Action::\"create\"",
+          "resource": "core::pods"
+        }
+      ],
+      "target": {
+        "action": "k8s::Action::\"get\"",
+        "resource": "core::secrets"
+      },
+      "when": "context.resource1.namespace == resource.namespace && context.resource1.secretRefs.contains(resource.name)"
+    },
+    {
+      "name": "pod-create-reads-serviceaccount",
+      "principal": [
+        "k8s::User"
+      ],
+      "sources": [
+        {
+          "action": "k8s::Action::\"create\"",
+          "resource": "core::pods"
+        }
+      ],
+      "target": {
+        "action": "k8s::Action::\"get\"",
+        "resource": "core::serviceaccounts"
+      },
+      "when": "context.resource1.namespace == resource.namespace && context.resource1.serviceAccountRef == resource.name"
+    },
+    {
+      "name": "pod-ephemeralcontainers-updates-pod",
+      "principal": [
+        "k8s::User"
+      ],
+      "sources": [
+        {
+          "action": "k8s::Action::\"update\"",
+          "resource": "core::pods_ephemeralcontainers"
+        }
+      ],
+      "target": {
+        "action": "k8s::Action::\"update\"",
+        "resource": "core::pods"
+      },
+      "when": "context.resource1.name == resource.name && context.resource1.namespace == resource.namespace"
+    },
+    {
+      "name": "pod-eviction-deletes-pod",
+      "principal": [
+        "k8s::User"
+      ],
+      "sources": [
+        {
+          "action": "k8s::Action::\"create\"",
+          "resource": "core::pods_eviction"
+        }
+      ],
+      "target": {
+        "action": "k8s::Action::\"delete\"",
+        "resource": "core::pods"
+      },
+      "when": "context.resource1.name == resource.name && context.resource1.namespace == resource.namespace"
+    },
+    {
+      "name": "pod-exec-reads-secret",
+      "principal": [
+        "k8s::User"
+      ],
+      "sources": [
+        {
+          "action": "k8s::Action::\"create\"",
+          "resource": "core::pods_exec"
+        }
+      ],
+      "target": {
+        "action": "k8s::Action::\"get\"",
+        "resource": "core::secrets"
+      },
+      "when": "context.resource1.namespace == resource.namespace"
+    },
+    {
+      "name": "pod-update-reads-configmap",
+      "principal": [
+        "k8s::User"
+      ],
+      "sources": [
+        {
+          "action": "k8s::Action::\"update\"",
+          "resource": "core::pods"
+        }
+      ],
+      "target": {
+        "action": "k8s::Action::\"get\"",
+        "resource": "core::configmaps"
+      },
+      "when": "context.resource1.namespace == resource.namespace && context.resource1.configMapRefs.contains(resource.name)"
+    },
+    {
+      "name": "pod-update-reads-secret",
+      "principal": [
+        "k8s::User"
+      ],
+      "sources": [
+        {
+          "action": "k8s::Action::\"update\"",
+          "resource": "core::pods"
+        }
+      ],
+      "target": {
+        "action": "k8s::Action::\"get\"",
+        "resource": "core::secrets"
+      },
+      "when": "context.resource1.namespace == resource.namespace && context.resource1.secretRefs.contains(resource.name)"
+    },
+    {
+      "name": "pods-ephemeralcontainers-reads-parent",
+      "principal": [
+        "k8s::User"
+      ],
+      "sources": [
+        {
+          "action": "k8s::Action::\"get\"",
+          "resource": "core::pods_ephemeralcontainers"
+        }
+      ],
+      "target": {
+        "action": "k8s::Action::\"get\"",
+        "resource": "core::pods"
+      },
+      "when": "resource.name == context.resource1.name && resource.namespace == context.resource1.namespace"
+    },
+    {
+      "name": "pods-status-reads-parent",
+      "principal": [
+        "k8s::User"
+      ],
+      "sources": [
+        {
+          "action": "k8s::Action::\"get\"",
+          "resource": "core::pods_status"
+        }
+      ],
+      "target": {
+        "action": "k8s::Action::\"get\"",
+        "resource": "core::pods"
+      },
+      "when": "resource.name == context.resource1.name && resource.namespace == context.resource1.namespace"
+    },
+    {
+      "name": "pods-status-updates-parent",
+      "principal": [
+        "k8s::User"
+      ],
+      "sources": [
+        {
+          "action": "k8s::Action::\"update\"",
+          "resource": "core::pods_status"
+        }
+      ],
+      "target": {
+        "action": "k8s::Action::\"update\"",
+        "resource": "core::pods"
+      },
+      "when": "resource.name == context.resource1.name && resource.namespace == context.resource1.namespace"
+    },
+    {
+      "name": "replicaset-create-creates-pod",
+      "principal": [
+        "k8s::User"
+      ],
+      "sources": [
+        {
+          "action": "k8s::Action::\"create\"",
+          "resource": "apps::replicasets"
+        }
+      ],
+      "target": {
+        "action": "k8s::Action::\"create\"",
+        "resource": "core::pods"
+      },
+      "when": "resource.namespace == context.resource1.namespace"
+    },
+    {
+      "name": "replicaset-scale-scales-pods",
+      "principal": [
+        "k8s::User"
+      ],
+      "sources": [
+        {
+          "action": "k8s::Action::\"update\"",
+          "resource": "apps::replicasets_scale"
+        }
+      ],
+      "target": {
+        "action": "k8s::Action::\"create\"",
+        "resource": "core::pods"
+      },
+      "when": "resource.namespace == context.resource1.namespace"
+    },
+    {
+      "name": "replicationcontroller-create-creates-pod",
+      "principal": [
+        "k8s::User"
+      ],
+      "sources": [
+        {
+          "action": "k8s::Action::\"create\"",
+          "resource": "core::replicationcontrollers"
+        }
+      ],
+      "target": {
+        "action": "k8s::Action::\"create\"",
+        "resource": "core::pods"
+      },
+      "when": "resource.namespace == context.resource1.namespace"
+    },
+    {
+      "name": "replicationcontroller-scale-scales-pods",
+      "principal": [
+        "k8s::User"
+      ],
+      "sources": [
+        {
+          "action": "k8s::Action::\"update\"",
+          "resource": "core::replicationcontrollers_scale"
+        }
+      ],
+      "target": {
+        "action": "k8s::Action::\"create\"",
+        "resource": "core::pods"
+      },
+      "when": "resource.namespace == context.resource1.namespace"
+    },
+    {
+      "name": "resourcequotas-status-updates-parent",
+      "principal": [
+        "k8s::User"
+      ],
+      "sources": [
+        {
+          "action": "k8s::Action::\"update\"",
+          "resource": "core::resourcequotas_status"
+        }
+      ],
+      "target": {
+        "action": "k8s::Action::\"update\"",
+        "resource": "core::resourcequotas"
+      },
+      "when": "resource.name == context.resource1.name && resource.namespace == context.resource1.namespace"
+    },
+    {
+      "name": "rolebinding-binds-role",
+      "principal": [
+        "k8s::User"
+      ],
+      "sources": [
+        {
+          "action": "k8s::Action::\"create\"",
+          "resource": "io::k8s::authorization::rbac::rolebindings"
+        }
+      ],
+      "target": {
+        "action": "k8s::Action::\"bind\"",
+        "resource": "k8s::Resource"
+      },
+      "when": "resource.resourceCombined == \"roles\""
+    },
+    {
+      "name": "secret-remounts-pod",
+      "principal": [
+        "k8s::User"
+      ],
+      "sources": [
+        {
+          "action": "k8s::Action::\"patch\"",
+          "resource": "core::secrets"
+        }
+      ],
+      "target": {
+        "action": "k8s::Action::\"patch\"",
+        "resource": "core::pods"
+      },
+      "when": "resource.namespace == context.resource1.namespace && resource.secretRefs.contains(context.resource1.name)"
+    },
+    {
+      "name": "service-create-creates-endpoints",
+      "principal": [
+        "k8s::User"
+      ],
+      "sources": [
+        {
+          "action": "k8s::Action::\"create\"",
+          "resource": "core::services"
+        }
+      ],
+      "target": {
+        "action": "k8s::Action::\"create\"",
+        "resource": "core::endpoints"
+      },
+      "when": "resource.namespace == context.resource1.namespace"
+    },
+    {
+      "name": "service-create-creates-endpointslices",
+      "principal": [
+        "k8s::User"
+      ],
+      "sources": [
+        {
+          "action": "k8s::Action::\"create\"",
+          "resource": "core::services"
+        }
+      ],
+      "target": {
+        "action": "k8s::Action::\"create\"",
+        "resource": "io::k8s::discovery::endpointslices"
+      },
+      "when": "resource.namespace == context.resource1.namespace"
+    },
+    {
+      "name": "serviceaccount-delete-deletes-secret",
+      "principal": [
+        "k8s::User"
+      ],
+      "sources": [
+        {
+          "action": "k8s::Action::\"delete\"",
+          "resource": "core::serviceaccounts"
+        }
+      ],
+      "target": {
+        "action": "k8s::Action::\"delete\"",
+        "resource": "core::secrets"
+      },
+      "when": "resource.namespace == context.resource1.namespace && context.resource1.secretRefs.contains(resource.name)"
+    },
+    {
+      "name": "serviceaccount-token-is-sa-credential",
+      "principal": [
+        "k8s::User"
+      ],
+      "sources": [
+        {
+          "action": "k8s::Action::\"create\"",
+          "resource": "core::serviceaccounts_token"
+        }
+      ],
+      "target": {
+        "action": "k8s::Action::\"get\"",
+        "resource": "core::serviceaccounts"
+      },
+      "when": "resource.name == context.resource1.name && resource.namespace == context.resource1.namespace"
+    },
+    {
+      "name": "servicecidr-status-updates-parent",
+      "principal": [
+        "k8s::User"
+      ],
+      "sources": [
+        {
+          "action": "k8s::Action::\"update\"",
+          "resource": "io::k8s::networking::servicecidrs_status"
+        }
+      ],
+      "target": {
+        "action": "k8s::Action::\"update\"",
+        "resource": "io::k8s::networking::servicecidrs"
+      },
+      "when": "resource.name == context.resource1.name"
+    },
+    {
+      "name": "statefulset-create-creates-controllerrevision",
+      "principal": [
+        "k8s::User"
+      ],
+      "sources": [
+        {
+          "action": "k8s::Action::\"create\"",
+          "resource": "apps::statefulsets"
+        }
+      ],
+      "target": {
+        "action": "k8s::Action::\"create\"",
+        "resource": "apps::controllerrevisions"
+      },
+      "when": "resource.namespace == context.resource1.namespace"
+    },
+    {
+      "name": "statefulset-create-creates-pod",
+      "principal": [
+        "k8s::User"
+      ],
+      "sources": [
+        {
+          "action": "k8s::Action::\"create\"",
+          "resource": "apps::statefulsets"
+        }
+      ],
+      "target": {
+        "action": "k8s::Action::\"create\"",
+        "resource": "core::pods"
+      },
+      "when": "resource.namespace == context.resource1.namespace"
+    },
+    {
+      "name": "statefulset-create-creates-pvc",
+      "principal": [
+        "k8s::User"
+      ],
+      "sources": [
+        {
+          "action": "k8s::Action::\"create\"",
+          "resource": "apps::statefulsets"
+        }
+      ],
+      "target": {
+        "action": "k8s::Action::\"create\"",
+        "resource": "core::persistentvolumeclaims"
+      },
+      "when": "resource.namespace == context.resource1.namespace"
+    },
+    {
+      "name": "statefulset-scale-scales-pods",
+      "principal": [
+        "k8s::User"
+      ],
+      "sources": [
+        {
+          "action": "k8s::Action::\"update\"",
+          "resource": "apps::statefulsets_scale"
+        }
+      ],
+      "target": {
+        "action": "k8s::Action::\"create\"",
+        "resource": "core::pods"
+      },
+      "when": "resource.namespace == context.resource1.namespace"
+    },
+    {
+      "name": "storageclass-create-creates-pv",
+      "principal": [
+        "k8s::User"
+      ],
+      "sources": [
+        {
+          "action": "k8s::Action::\"create\"",
+          "resource": "io::k8s::storage::storageclasses"
+        }
+      ],
+      "target": {
+        "action": "k8s::Action::\"create\"",
+        "resource": "core::persistentvolumes"
+      },
+      "when": "resource.storageClassName == context.resource1.name"
+    },
+    {
+      "name": "volumeattachment-status-updates-parent",
+      "principal": [
+        "k8s::User"
+      ],
+      "sources": [
+        {
+          "action": "k8s::Action::\"update\"",
+          "resource": "io::k8s::storage::volumeattachments_status"
+        }
+      ],
+      "target": {
+        "action": "k8s::Action::\"update\"",
+        "resource": "io::k8s::storage::volumeattachments"
+      },
+      "when": "resource.name == context.resource1.name"
+    }
+  ]
+}

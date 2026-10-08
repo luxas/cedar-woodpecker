@@ -1,0 +1,7 @@
+{ "transitions": [ {
+  "name": "csr-approval-issues-cert",
+  "principal": ["k8s::User"],
+  "sources": [ { "action": "k8s::Action::\"update\"", "resource": "io::k8s::certificates::certificatesigningrequests_approval" } ],
+  "target":  { "action": "k8s::Action::\"update\"", "resource": "io::k8s::certificates::certificatesigningrequests" },
+  "when": "resource.name == context.resource1.name"
+} ] }

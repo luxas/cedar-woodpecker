@@ -1,0 +1,7 @@
+{ "transitions": [ {
+  "name": "pod-ephemeralcontainers-updates-pod",
+  "principal": ["k8s::User"],
+  "sources": [ { "action": "k8s::Action::\"update\"", "resource": "core::pods_ephemeralcontainers" } ],
+  "target":  { "action": "k8s::Action::\"update\"", "resource": "core::pods" },
+  "when": "context.resource1.name == resource.name && context.resource1.namespace == resource.namespace"
+} ] }
