@@ -1,0 +1,7 @@
+{ "transitions": [ {
+  "name": "flowschema-references-prioritylevel",
+  "principal": ["k8s::User"],
+  "sources": [ { "action": "k8s::Action::\"create\"", "resource": "io::k8s::apiserver::flowcontrol::flowschemas" } ],
+  "target":  { "action": "k8s::Action::\"get\"", "resource": "io::k8s::apiserver::flowcontrol::prioritylevelconfigurations" },
+  "when": "resource.name == context.resource1.priorityLevelName"
+} ] }

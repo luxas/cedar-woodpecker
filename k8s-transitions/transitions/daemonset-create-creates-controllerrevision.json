@@ -1,0 +1,7 @@
+{ "transitions": [ {
+  "name": "daemonset-create-creates-controllerrevision",
+  "principal": ["k8s::User"],
+  "sources": [ { "action": "k8s::Action::\"create\"", "resource": "apps::daemonsets" } ],
+  "target":  { "action": "k8s::Action::\"create\"", "resource": "apps::controllerrevisions" },
+  "when": "resource.namespace == context.resource1.namespace"
+} ] }

@@ -1,0 +1,7 @@
+{ "transitions": [ {
+  "name": "volumeattachment-status-updates-parent",
+  "principal": ["k8s::User"],
+  "sources": [ { "action": "k8s::Action::\"update\"", "resource": "io::k8s::storage::volumeattachments_status" } ],
+  "target":  { "action": "k8s::Action::\"update\"", "resource": "io::k8s::storage::volumeattachments" },
+  "when": "resource.name == context.resource1.name"
+} ] }

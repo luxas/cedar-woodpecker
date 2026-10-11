@@ -1,0 +1,7 @@
+{ "transitions": [ {
+  "name": "namespace-delete-deletes-pods",
+  "principal": ["k8s::User"],
+  "sources": [ { "action": "k8s::Action::\"delete\"", "resource": "core::namespaces" } ],
+  "target":  { "action": "k8s::Action::\"delete\"", "resource": "core::pods" },
+  "when": "resource.namespace.name == context.resource1.name"
+} ] }

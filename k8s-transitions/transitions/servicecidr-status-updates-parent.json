@@ -1,0 +1,7 @@
+{ "transitions": [ {
+  "name": "servicecidr-status-updates-parent",
+  "principal": ["k8s::User"],
+  "sources": [ { "action": "k8s::Action::\"update\"", "resource": "io::k8s::networking::servicecidrs_status" } ],
+  "target":  { "action": "k8s::Action::\"update\"", "resource": "io::k8s::networking::servicecidrs" },
+  "when": "resource.name == context.resource1.name"
+} ] }

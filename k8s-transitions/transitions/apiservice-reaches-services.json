@@ -1,0 +1,7 @@
+{ "transitions": [ {
+  "name": "apiservice-reaches-services",
+  "principal": ["k8s::User"],
+  "sources": [ { "action": "k8s::Action::\"create\"", "resource": "io::k8s::apiregistration::apiservices" } ],
+  "target":  { "action": "k8s::Action::\"get\"", "resource": "core::services" },
+  "when": "true"
+} ] }

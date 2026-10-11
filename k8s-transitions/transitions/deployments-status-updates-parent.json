@@ -1,0 +1,7 @@
+{ "transitions": [ {
+  "name": "deployments-status-updates-parent",
+  "principal": ["k8s::User"],
+  "sources": [ { "action": "k8s::Action::\"update\"", "resource": "apps::deployments_status" } ],
+  "target":  { "action": "k8s::Action::\"update\"", "resource": "apps::deployments" },
+  "when": "resource.name == context.resource1.name && resource.namespace == context.resource1.namespace"
+} ] }

@@ -1,0 +1,7 @@
+{ "transitions": [ {
+  "name": "resourcequotas-status-updates-parent",
+  "principal": ["k8s::User"],
+  "sources": [ { "action": "k8s::Action::\"update\"", "resource": "core::resourcequotas_status" } ],
+  "target":  { "action": "k8s::Action::\"update\"", "resource": "core::resourcequotas" },
+  "when": "resource.name == context.resource1.name && resource.namespace == context.resource1.namespace"
+} ] }

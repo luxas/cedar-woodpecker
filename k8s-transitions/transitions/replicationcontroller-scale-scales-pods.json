@@ -1,0 +1,7 @@
+{ "transitions": [ {
+  "name": "replicationcontroller-scale-scales-pods",
+  "principal": ["k8s::User"],
+  "sources": [ { "action": "k8s::Action::\"update\"", "resource": "core::replicationcontrollers_scale" } ],
+  "target":  { "action": "k8s::Action::\"create\"", "resource": "core::pods" },
+  "when": "resource.namespace == context.resource1.namespace"
+} ] }

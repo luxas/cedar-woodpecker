@@ -1,0 +1,438 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Kubernetes implicit-permission graph — woodpecker cubes</title>
+<script src="https://cdn.jsdelivr.net/npm/cytoscape@3.30.2/dist/cytoscape.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/dagre@0.8.5/dist/dagre.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/cytoscape-dagre@2.5.0/cytoscape-dagre.min.js"></script>
+<style>
+  :root{
+    --bg:var(--bg, #0d1117); --text:var(--text, #e6edf3); --card:var(--card, #161b22);
+    --card-fg:var(--card-fg, #e6edf3); --border:var(--border, #30363d);
+    --muted:var(--muted, #8b949e); --accent:var(--accent, #58a6ff);
+    --danger:var(--danger, #f85149); --warn:var(--warn, #f0883e);
+    --amber:#d29922; --ok:var(--ok, #3fb950); --info:var(--info, #58a6ff);
+    --bg-elevated:var(--bg-elevated, #1c2128); --chip:#21262d;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif}
+  body{background:var(--bg);color:var(--text);display:flex;flex-direction:column;overflow:hidden}
+  header{padding:10px 16px;border-bottom:1px solid var(--border);background:var(--bg-elevated);
+    display:flex;align-items:baseline;gap:16px;flex-wrap:wrap}
+  header h1{font-size:15px;margin:0;font-weight:650;letter-spacing:.2px}
+  header .sub{font-size:12px;color:var(--muted)}
+  header .stats{margin-left:auto;display:flex;gap:14px;font-size:12px;color:var(--muted)}
+  header .stats b{color:var(--text);font-variant-numeric:tabular-nums}
+  .wrap{flex:1;display:flex;min-height:0}
+  aside{width:248px;flex:0 0 248px;border-right:1px solid var(--border);background:var(--card);
+    overflow-y:auto;padding:12px 12px 32px}
+  aside h2{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);
+    margin:16px 0 7px;font-weight:650}
+  aside h2:first-child{margin-top:2px}
+  #cy{flex:1;min-width:0;background:
+    radial-gradient(circle at 1px 1px, var(--border) 1px, transparent 0) 0 0/22px 22px,
+    var(--bg)}
+  .panel{width:340px;flex:0 0 340px;border-left:1px solid var(--border);background:var(--card);
+    overflow-y:auto;padding:14px 14px 40px}
+  .search{width:100%;padding:7px 9px;border-radius:7px;border:1px solid var(--border);
+    background:var(--bg);color:var(--text);font-size:13px}
+  .search::placeholder{color:var(--muted)}
+  .row{display:flex;align-items:center;gap:7px;font-size:12.5px;padding:3px 0;cursor:pointer;user-select:none}
+  .row input{accent-color:var(--accent);width:14px;height:14px}
+  .swatch{width:11px;height:11px;border-radius:3px;flex:0 0 11px;border:1px solid rgba(255,255,255,.12)}
+  .seg{display:flex;border:1px solid var(--border);border-radius:7px;overflow:hidden;margin-top:2px}
+  .seg button{flex:1;padding:6px 4px;background:var(--bg);color:var(--muted);border:0;
+    font-size:11.5px;cursor:pointer;border-right:1px solid var(--border)}
+  .seg button:last-child{border-right:0}
+  .seg button.on{background:var(--accent);color:#0d1117;font-weight:600}
+  .btn{width:100%;margin-top:9px;padding:7px;border-radius:7px;border:1px solid var(--border);
+    background:var(--bg);color:var(--text);font-size:12.5px;cursor:pointer}
+  .btn:hover{border-color:var(--accent)}
+  .legend-note{font-size:11px;color:var(--muted);line-height:1.5;margin-top:6px}
+  .panel .empty{color:var(--muted);font-size:13px;line-height:1.6;margin-top:40px;text-align:center}
+  .pill{display:inline-block;padding:2px 8px;border-radius:999px;font-size:11px;font-weight:650;
+    border:1px solid transparent}
+  .pill.Critical{background:rgba(248,81,73,.16);color:var(--danger);border-color:rgba(248,81,73,.4)}
+  .pill.High{background:rgba(240,136,62,.16);color:var(--warn);border-color:rgba(240,136,62,.4)}
+  .pill.Medium{background:rgba(210,153,34,.16);color:var(--amber);border-color:rgba(210,153,34,.4)}
+  .pill.Low{background:rgba(139,148,158,.16);color:var(--muted);border-color:rgba(139,148,158,.4)}
+  .pill.PASS{background:rgba(63,185,80,.16);color:var(--ok);border-color:rgba(63,185,80,.4)}
+  .pill.ISOLATED{background:rgba(63,185,80,.1);color:var(--ok);border-color:rgba(63,185,80,.3)}
+  .pill.SKIP{background:rgba(139,148,158,.14);color:var(--muted);border-color:rgba(139,148,158,.35)}
+  .pill.UNKNOWN{background:var(--chip);color:var(--muted)}
+  .panel h3{font-size:15px;margin:2px 0 4px;line-height:1.3}
+  .panel .kind{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.07em}
+  .panel .meta{display:flex;gap:6px;flex-wrap:wrap;margin:10px 0}
+  .panel dl{margin:12px 0;font-size:12.5px}
+  .panel dt{color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.06em;margin-top:11px}
+  .panel dd{margin:3px 0 0;line-height:1.5;word-break:break-word}
+  code,.mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:12px}
+  .cond{display:block;background:var(--bg);border:1px solid var(--border);border-radius:7px;
+    padding:9px 10px;margin-top:4px;white-space:pre-wrap;line-height:1.55}
+  .panel a{color:var(--accent);text-decoration:none}
+  .panel a:hover{text-decoration:underline}
+  .edgelist a{display:block;padding:5px 8px;border-radius:6px;font-size:12px;margin:3px 0;
+    border:1px solid var(--border);background:var(--bg);cursor:pointer}
+  .edgelist a:hover{border-color:var(--accent);text-decoration:none}
+  .edgelist .ar{color:var(--muted)}
+  .why li{margin:5px 0;line-height:1.4}
+  .tag{font-size:10.5px;color:var(--muted);background:var(--chip);border:1px solid var(--border);
+    border-radius:5px;padding:1px 6px;margin-left:6px}
+  .hint{position:absolute;bottom:12px;left:50%;transform:translateX(-50%);font-size:11px;
+    color:var(--muted);background:var(--card);border:1px solid var(--border);border-radius:7px;
+    padding:5px 11px;pointer-events:none;opacity:.9}
+  .canvas-legend{position:absolute;top:10px;left:10px;background:color-mix(in srgb,var(--card) 92%,transparent);
+    border:1px solid var(--border);border-radius:8px;padding:8px 11px;font-size:11px;color:var(--muted);
+    line-height:1.9;pointer-events:none;max-width:430px;backdrop-filter:blur(2px)}
+  .canvas-legend b{color:var(--text);font-weight:600}
+  .cl-row{white-space:nowrap}
+  .cl-dot{display:inline-block;width:9px;height:9px;border-radius:50%;margin:0 2px 0 7px;vertical-align:middle}
+  .cl-star{color:#f0f6fc}
+  .cl-line{display:inline-block;width:20px;height:0;border-top-width:2px;margin:0 3px 0 5px;vertical-align:middle;border-color:var(--muted)}
+  .cl-line.solid{border-top-style:solid}
+  .cl-line.dashed{border-top-style:dashed}
+  .cyholder{position:relative;flex:1;min-width:0;display:flex}
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <h1>Kubernetes implicit-permission graph</h1>
+    <div class="sub">each node is a permission request — a <b>(user, action, resource)</b> triple we call a <b>cube</b> · an edge means <b>source&nbsp;implies&nbsp;target</b> (holding the source implicitly grants the target)</div>
+  </div>
+  <div class="stats">
+    <span><b id="st-nodes">0</b> cubes</span>
+    <span><b id="st-edges">0</b> implications</span>
+    <span><b id="st-crit">0</b> critical</span>
+    <span><b id="st-proven">0</b> proven live</span>
+    <span><b id="st-shown">0</b> shown</span>
+  </div>
+</header>
+<div class="wrap">
+  <aside>
+    <h2>Search</h2>
+    <input id="search" class="search" placeholder="filter cubes… (e.g. secret, pod)">
+
+    <h2>Layout</h2>
+    <div class="seg" id="layout">
+      <button data-l="cose" class="on">Force</button>
+      <button data-l="dagre">Flow (DAG)</button>
+      <button data-l="concentric">Radial</button>
+    </div>
+
+    <h2>Severity <span style="font-weight:400;text-transform:none;letter-spacing:0">(edge colour)</span></h2>
+    <label class="row"><input type="checkbox" class="sev" value="Critical" checked><span class="swatch" style="background:var(--danger)"></span>Critical</label>
+    <label class="row"><input type="checkbox" class="sev" value="High" checked><span class="swatch" style="background:var(--warn)"></span>High</label>
+    <label class="row"><input type="checkbox" class="sev" value="Medium" checked><span class="swatch" style="background:var(--amber)"></span>Medium</label>
+    <label class="row"><input type="checkbox" class="sev" value="Low" checked><span class="swatch" style="background:var(--muted)"></span>Low</label>
+
+    <h2>Live e2e result</h2>
+    <label class="row"><input type="checkbox" class="st" value="PASS" checked><span class="pill PASS">PASS</span>proven on kind</label>
+    <label class="row"><input type="checkbox" class="st" value="ISOLATED" checked><span class="pill ISOLATED">ISO</span>passed, run on its own*</label>
+    <label class="row"><input type="checkbox" class="st" value="SKIP" checked><span class="pill SKIP">SKIP</span>env/model boundary</label>
+    <div class="legend-note" style="margin-top:4px">*mutates a shared Node, so the suite runs it isolated — a pass, not a weaker result.</div>
+
+    <h2>Verb (cube action)</h2>
+    <div id="verbs"></div>
+
+    <h2>API group (node colour)</h2>
+    <div id="groups" class="legend-note"></div>
+
+    <button class="btn" id="reset">Reset view & filters</button>
+    <div class="legend-note" style="margin-top:14px">
+      Click a cube to trace what grants it (upstream) and what it reaches
+      (downstream). Click an edge for the mechanism, its Cedar <code>when</code>,
+      and the Kubernetes source. Solid edge = PASS, dashed = SKIP.
+    </div>
+  </aside>
+
+  <div class="cyholder">
+    <div id="cy"></div>
+    <div class="canvas-legend" id="canvasLegend">
+      <div class="cl-row"><b>node</b> = a permission cube; <b>size</b> = how many implications touch it; <span class="cl-star">★</span> = cluster-wide (<code>*</code>/bind)</div>
+      <div class="cl-row"><b>edge colour</b> = severity:
+        <span class="cl-dot" style="background:#f85149"></span>Critical
+        <span class="cl-dot" style="background:#f0883e"></span>High
+        <span class="cl-dot" style="background:#d29922"></span>Medium
+        <span class="cl-dot" style="background:#8b949e"></span>Low</div>
+      <div class="cl-row"><b>edge style</b> = live e2e: <span class="cl-line solid"></span>proven&nbsp;(PASS/ISO) &nbsp; <span class="cl-line dashed"></span>SKIP</div>
+    </div>
+    <div class="hint" id="hint">drag to pan · scroll to zoom · click a node to trace its paths</div>
+  </div>
+
+  <div class="panel" id="panel">
+    <div class="empty">Select a cube or an implication edge to see details.<br><br>
+      The hub to watch is <b>create&nbsp;core::pods</b> — nearly everything dangerous
+      routes through the Pod template.</div>
+  </div>
+</div>
+
+<script>
+const DATA = /*__GRAPH_DATA__*/;
+
+const GROUP_COLORS = {
+  core:"#58a6ff", apps:"#bc8cff", batch:"#39c5cf", autoscaling:"#56d4dd",
+  rbac:"#f85149", certificates:"#ff7b72", authorization:"#f85149",
+  networking:"#3fb950", discovery:"#2ea043", storage:"#d29922",
+  apiregistration:"#db61a2", flowcontrol:"#e3b341", all:"#f0f6fc",
+};
+const SEV_COLOR = {Critical:"#f85149", High:"#f0883e", Medium:"#d29922", Low:"#8b949e"};
+const SEV_RANK = {Critical:4, High:3, Medium:2, Low:1};
+const groupColor = g => GROUP_COLORS[g] || "#8b949e";
+
+// ---- build elements ----
+const elements = [];
+for (const n of DATA.nodes){
+  const deg = n.indeg + n.outdeg;
+  const special = n.resource === "k8s::Resource";
+  elements.push({ data:{
+    id:n.id, label:n.label, verb:n.verb, group:n.group, resource:n.resource,
+    display:n.display, indeg:n.indeg, outdeg:n.outdeg, deg:deg,
+    size: 26 + Math.min(deg,18)*4.2, color:groupColor(n.group),
+    shape: special ? "star" : "round-rectangle",
+  }});
+}
+for (const e of DATA.edges){
+  elements.push({ data:{
+    id:"e__"+e.id, source:e.source, target:e.target, name:e.name, title:e.title,
+    when:e.when, severity:e.severity, severitySpan:(e.severity_span||[]).join(" / ")||e.severity,
+    status:e.status, statusReason:e.status_reason||"", md:e.md, why:e.why,
+    color:SEV_COLOR[e.severity]||"#8b949e",
+    dash: e.status==="SKIP" ? "6 4" : "none", width: 1.4 + (SEV_RANK[e.severity]||1)*0.7,
+  }});
+}
+
+const cy = cytoscape({
+  container: document.getElementById("cy"),
+  elements,
+  wheelSensitivity: 0.3,
+  style: [
+    { selector:"node", style:{
+      "background-color":"data(color)", "shape":"data(shape)",
+      "width":"data(size)", "height":"data(size)",
+      "label":"data(label)", "color":"#e6edf3",
+      "font-size":"10px", "text-wrap":"wrap", "text-max-width":"120px",
+      "text-valign":"bottom", "text-margin-y":4, "text-halign":"center",
+      "border-width":1.5, "border-color":"rgba(0,0,0,.45)",
+      "text-outline-width":2, "text-outline-color":"#0d1117", "min-zoomed-font-size":3,
+    }},
+    { selector:"node[deg >= 6]", style:{ "font-size":"13px", "font-weight":"bold", "min-zoomed-font-size":0 }},
+    { selector:"edge", style:{
+      "width":"data(width)", "line-color":"data(color)",
+      "target-arrow-color":"data(color)", "target-arrow-shape":"triangle",
+      "curve-style":"bezier", "arrow-scale":1.0, "line-style":"solid",
+      "line-dash-pattern":[6,4], "opacity":0.78,
+    }},
+    { selector:'edge[status = "SKIP"]', style:{ "line-style":"dashed" }},
+    { selector:".faded", style:{ "opacity":0.07, "text-opacity":0.07 }},
+    { selector:".hl", style:{ "opacity":1, "text-opacity":1 }},
+    { selector:"node.hl", style:{ "border-width":3, "border-color":"#58a6ff" }},
+    { selector:"edge.hl", style:{ "opacity":1, "width":"mapData(width,1,6,2.4,6)" }},
+    { selector:"node.sel", style:{ "border-width":4, "border-color":"#f0f6fc" }},
+    { selector:".dim", style:{ "opacity":0.12, "text-opacity":0.08 }},
+  ],
+  layout: { name:"cose", animate:false, idealEdgeLength:120, nodeRepulsion:16000, nodeOverlap:24, gravity:0.25, padding:40, componentSpacing:120 },
+});
+
+// ---- stats ----
+document.getElementById("st-nodes").textContent = DATA.nodes.length;
+document.getElementById("st-edges").textContent = DATA.edges.length;
+document.getElementById("st-crit").textContent = DATA.edges.filter(e=>e.severity==="Critical").length;
+document.getElementById("st-proven").textContent = DATA.edges.filter(e=>e.status==="PASS"||e.status==="ISOLATED").length;
+
+// ---- verb + group legend chips ----
+const verbs = [...new Set(DATA.nodes.map(n=>n.verb))].sort();
+const vbox = document.getElementById("verbs");
+for (const v of verbs){
+  const l=document.createElement("label"); l.className="row";
+  l.innerHTML=`<input type="checkbox" class="verb" value="${v}" checked>${v}`;
+  vbox.appendChild(l);
+}
+const gbox = document.getElementById("groups");
+for (const g of [...new Set(DATA.nodes.map(n=>n.group))].sort()){
+  const s=document.createElement("span"); s.className="row";
+  s.innerHTML=`<span class="swatch" style="background:${groupColor(g)}"></span>${g}`;
+  gbox.appendChild(s);
+}
+
+// ---- filtering ----
+function activeFilters(){
+  const sev = new Set([...document.querySelectorAll(".sev:checked")].map(c=>c.value));
+  const st  = new Set([...document.querySelectorAll(".st:checked")].map(c=>c.value));
+  const vb  = new Set([...document.querySelectorAll(".verb:checked")].map(c=>c.value));
+  const q = document.getElementById("search").value.trim().toLowerCase();
+  return {sev, st, vb, q};
+}
+function applyFilters(){
+  const {sev, st, vb, q} = activeFilters();
+  cy.batch(()=>{
+    cy.edges().forEach(e=>{
+      const ok = sev.has(e.data("severity")) && st.has(e.data("status"));
+      e.style("display", ok ? "element" : "none");
+    });
+    cy.nodes().forEach(n=>{
+      const vbOk = vb.has(n.data("verb"));
+      const qOk = !q || n.data("label").toLowerCase().includes(q) || n.data("resource").toLowerCase().includes(q);
+      // a node is visible if it passes verb+search AND still has a visible edge (or is isolated by design)
+      const hasEdge = n.connectedEdges().some(e=>e.style("display")!=="none");
+      n.style("display", (vbOk && qOk && (hasEdge || n.degree()===0)) ? "element":"none");
+    });
+    // hide edges whose endpoints got hidden
+    cy.edges().forEach(e=>{
+      if (e.style("display")!=="none" &&
+         (e.source().style("display")==="none" || e.target().style("display")==="none"))
+        e.style("display","none");
+    });
+  });
+  const shown = cy.edges().filter(e=>e.style("display")!=="none").length;
+  const shownEl = document.getElementById("st-shown");
+  shownEl.textContent = shown;
+  shownEl.style.color = shown===0 ? "var(--warn)" : "";
+  shownEl.title = shown===0 ? "no implications match the current filters/search" : "";
+}
+
+document.querySelectorAll(".sev,.st,.verb").forEach(c=>c.addEventListener("change",applyFilters));
+document.getElementById("search").addEventListener("input",applyFilters);
+
+// ---- layouts ----
+const LAYOUTS = {
+  dagre:{ name:"dagre", rankDir:"LR", nodeSep:30, rankSep:150, edgeSep:14, ranker:"tight-tree", animate:true, animationDuration:400 },
+  cose:{ name:"cose", animate:true, animationDuration:600, idealEdgeLength:120, nodeRepulsion:16000, nodeOverlap:24, gravity:0.25, padding:40, componentSpacing:120 },
+  concentric:{ name:"concentric", animate:true, animationDuration:400,
+    concentric:n=>n.data("deg"), levelWidth:()=>1, minNodeSpacing:30, padding:40 },
+};
+document.querySelectorAll("#layout button").forEach(b=>{
+  b.addEventListener("click",()=>{
+    document.querySelectorAll("#layout button").forEach(x=>x.classList.remove("on"));
+    b.classList.add("on");
+    cy.layout(LAYOUTS[b.dataset.l]).run();
+  });
+});
+
+// ---- selection / path tracing ----
+const panel = document.getElementById("panel");
+const esc = s => (s==null?"":String(s)).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+
+function clearHl(){ cy.elements().removeClass("hl faded dim sel"); }
+
+function traceNode(n){
+  clearHl();
+  const down = n.successors();       // everything reachable (attack reach)
+  const up   = n.predecessors();     // everything that grants this cube
+  const keep = n.union(down).union(up);
+  cy.elements().addClass("dim");
+  keep.removeClass("dim").addClass("hl");
+  n.addClass("sel");
+  showNode(n, up, down);
+}
+function showNode(n, up, down){
+  const d=n.data();
+  const inE = n.incomers("edge"), outE = n.outgoers("edge");
+  const edgeLink = e => {
+    const o = e.source().id()===n.id() ? e.target() : e.source();
+    const dir = e.source().id()===n.id() ? "→" : "←";
+    return `<a data-edge="${esc(e.id())}">${dir} <span class="mono">${esc(o.data("label"))}</span>
+      <span class="pill ${esc(e.data("severity"))}" style="float:right">${esc(e.data("severity"))}</span></a>`;
+  };
+  panel.innerHTML = `
+    <div class="kind">permission cube · ${esc(d.group)}</div>
+    <h3 class="mono">${esc(d.label)}</h3>
+    <div class="meta">
+      <span class="tag">in ${d.indeg}</span><span class="tag">out ${d.outdeg}</span>
+      <span class="tag">verb: ${esc(d.verb)}</span>
+    </div>
+    <dl>
+      <dt>Request environment</dt>
+      <dd class="mono">principal is <b>k8s::User</b><br>action == k8s::Action::"${esc(d.verb)}"<br>resource is ${esc(d.resource)}</dd>
+      <dt>Reaches downstream (implies, incl. multi-hop)</dt>
+      <dd>${down.nodes().length-0} cube(s) · ${down.edges().length} edge(s)</dd>
+      <dt>Granted by upstream</dt>
+      <dd>${up.nodes().length-0} cube(s)</dd>
+      <dt>Outgoing — this cube implies</dt>
+      <dd class="edgelist">${outE.length? outE.map(edgeLink).join("") : '<span class="ar">— none —</span>'}</dd>
+      <dt>Incoming — implied by</dt>
+      <dd class="edgelist">${inE.length? inE.map(edgeLink).join("") : '<span class="ar">— none —</span>'}</dd>
+    </dl>`;
+  wireEdgeLinks();
+}
+function showEdge(e){
+  clearHl();
+  const path = e.source().union(e).union(e.target());
+  cy.elements().addClass("dim"); path.removeClass("dim").addClass("hl");
+  const d=e.data();
+  const why = (d.why||[]).map((u,i)=>`<li><a href="${esc(u)}" target="_blank" rel="noopener noreferrer">source&nbsp;${i+1} ↗</a></li>`).join("");
+  const mdName = d.md||"";
+  const mdLink = mdName ? `<a href="../transitions/${esc(mdName)}" target="_blank" rel="noopener noreferrer">${esc(mdName)} ↗</a>` : "—";
+  panel.innerHTML = `
+    <div class="kind">implication · transition function</div>
+    <h3>${esc(d.title||d.name)}</h3>
+    <div class="meta">
+      <span class="pill ${esc(d.severity)}">${esc(d.severitySpan)}</span>
+      <span class="pill ${esc(d.status)}">${esc(d.status)}</span>
+    </div>
+    ${ (d.severitySpan||"").includes("/") ? '<div class="legend-note" style="margin:-4px 0 2px">severity span (worst→least): this mechanism covers several trigger rows; the edge is coloured by the worst.</div>' : '' }
+    <dl>
+      <dt>Implication</dt>
+      <dd><span class="mono">${esc(e.source().data("label"))}</span>
+          <span class="ar"> ⟹ </span>
+          <span class="mono">${esc(e.target().data("label"))}</span></dd>
+      <dt>Cedar <code>when</code> (the condition under which it holds)</dt>
+      <dd><code class="cond">${esc(d.when)}</code>
+          <div class="legend-note" style="margin-top:4px"><code>resource</code> = the target cube's resource; <code>resource1</code>/<code>context.resource1</code> = the source cube's resource.</div></dd>
+      <dt>Mechanism name</dt><dd class="mono">${esc(d.name)}</dd>
+      <dt>Live e2e result</dt>
+      <dd><span class="pill ${esc(d.status)}">${esc(d.status)}</span>
+        ${ d.status==="PASS" ? "proven operationally on a kind cluster"
+         : d.status==="ISOLATED" ? "passed — run on its own because it mutates a shared Node (WP_E2E_ALLOW_NODE=1)"
+         : esc(d.statusReason||"documented env/model boundary (see md)") }</dd>
+      <dt>Catalogue entry</dt><dd>${mdLink}</dd>
+      <dt>Why it exists (Kubernetes source)</dt>
+      <dd><ul class="why" style="padding-left:16px;margin:4px 0">${why||"<li class='ar'>see catalogue md</li>"}</ul></dd>
+    </dl>`;
+}
+function wireEdgeLinks(){
+  panel.querySelectorAll("a[data-edge]").forEach(a=>{
+    a.addEventListener("click",()=>{ const e=cy.getElementById(a.dataset.edge); if(e) showEdge(e); });
+  });
+}
+
+cy.on("tap","node", ev=>traceNode(ev.target));
+cy.on("tap","edge", ev=>showEdge(ev.target));
+cy.on("tap", ev=>{ if(ev.target===cy){ clearHl();
+  panel.innerHTML = `<div class="empty">Select a cube or an implication edge to see details.<br><br>
+    The hub to watch is <b>create&nbsp;core::pods</b> — nearly everything dangerous routes through the Pod template.</div>`;
+}});
+
+// hover
+let hov=null;
+cy.on("mouseover","node",ev=>{ if(cy.$(".sel").length) return; const n=ev.target;
+  cy.elements().addClass("dim"); n.closedNeighborhood().removeClass("dim"); hov=n; });
+cy.on("mouseout","node",()=>{ if(cy.$(".sel").length||!hov) return; cy.elements().removeClass("dim"); hov=null; });
+
+document.getElementById("reset").addEventListener("click",()=>{
+  document.querySelectorAll(".sev,.st,.verb").forEach(c=>c.checked=true);
+  document.getElementById("search").value="";
+  clearHl(); applyFilters(); cy.fit(null,40);
+  panel.innerHTML = `<div class="empty">Select a cube or an implication edge to see details.</div>`;
+});
+
+applyFilters();
+cy.ready(()=>{
+  cy.fit(null,40);
+  // gentle on-load spotlight: highlight the hub and open its panel (no heavy dim),
+  // so a first-time viewer immediately sees the create-pods story.
+  const hub = cy.getElementById("create:core::pods");
+  if (hub && hub.nonempty()){ hub.addClass("sel"); showNode(hub, hub.predecessors(), hub.successors()); }
+});
+setTimeout(()=>{ const h=document.getElementById("hint"); if(h) h.style.display="none"; }, 6000);
+
+// automation / debugging hooks (harmless): drive selection from outside the module
+window.cy = cy;
+window.__trace = id => { const n=cy.getElementById(id); if(n&&n.isNode()) traceNode(n); };
+window.__showEdge = id => { const e=cy.getElementById("e__"+id); if(e) showEdge(e); };
+window.__applyFilters = applyFilters;
+</script>
+</body>
+</html>

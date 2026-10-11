@@ -1,0 +1,7 @@
+{ "transitions": [ {
+  "name": "clusterrolebinding-grants-all",
+  "principal": ["k8s::User"],
+  "sources": [ { "action": "k8s::Action::\"create\"", "resource": "io::k8s::authorization::rbac::clusterrolebindings" } ],
+  "target":  { "action": "k8s::Action::\"*\"", "resource": "k8s::Resource" },
+  "when": "true"
+} ] }

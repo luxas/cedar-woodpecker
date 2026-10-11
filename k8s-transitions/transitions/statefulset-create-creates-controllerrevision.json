@@ -1,0 +1,7 @@
+{ "transitions": [ {
+  "name": "statefulset-create-creates-controllerrevision",
+  "principal": ["k8s::User"],
+  "sources": [ { "action": "k8s::Action::\"create\"", "resource": "apps::statefulsets" } ],
+  "target":  { "action": "k8s::Action::\"create\"", "resource": "apps::controllerrevisions" },
+  "when": "resource.namespace == context.resource1.namespace"
+} ] }
