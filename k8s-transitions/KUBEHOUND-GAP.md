@@ -6,7 +6,7 @@ mechanisms worth adding as woodpecker transitions.
 
 - Source: `DataDog/KubeHound` @ `ba4cdde2fa17875932c8941c3932da2e1c80eca3`
   (2026-09-14), `docs/reference/attacks/` + `pkg/kubehound/graph/edge/`.
-- Our catalogue: 63 transitions / 47 mechanisms in [`transitions/`](transitions/).
+- Our catalogue: 63 transitions + 3 impersonation definitions / 50 mechanisms in [`transitions/`](transitions/). Identity assumption (plan 18 Layer B) added 2026-10-11.
 
 KubeHound and this catalogue model different things and overlap in the middle.
 KubeHound is an **attack graph** over a live cluster: its edges include runtime
@@ -24,10 +24,15 @@ transition model does not natively express:
 
 1. **`impersonate` → assume identity** (KubeHound `IDENTITY_IMPERSONATE`) — a
    whole RBAC-escalation family absent from this catalogue and from Yang et al.
+   **DONE** (2026-10-11): [`impersonate-assumes-sa`](transitions/impersonate-assumes-sa.md)
+   via the plan-18 identity-assumption lowering, `[sound]` and proven live on kind
+   (users/groups documented as not principal-modelable).
 2. **`get`/`list secrets` → assume the ServiceAccount whose token is a Secret**
-   (`TOKEN_LIST`, `TOKEN_BRUTEFORCE`) — the *secret → identity* escalation; we
-   model the mint path (`serviceaccounts/token`) but not the read-a-token-Secret
-   path.
+   (`TOKEN_LIST`, `TOKEN_BRUTEFORCE`) — the *secret → identity* escalation.
+   **DONE** (2026-10-11): [`read-token-secret-assumes-sa`](transitions/read-token-secret-assumes-sa.md)
+   (using the new `secrets.serviceAccountName`/`.type` fields), `[sound]` and
+   proven live on kind. The `create pods → act as SA` chain is also added as
+   [`create-pod-assumes-sa`](transitions/create-pod-assumes-sa.md).
 3. **`patch pods` → read the pod's mounted Secrets** (`POD_PATCH`) — a verb
    sibling of our `pods/exec` and `pods/ephemeralcontainers` edges.
    **DONE** (2026-10-11): added as
@@ -47,9 +52,9 @@ specific `(action, resource)`. That is not a single `p ⟹ q` transition; see
 | `POD_PATCH` | PermissionSet→Pod | **yes** — `pod-patch-image-reads-secret` (`patch pods` image-swap → code-exec → mounted secret); also `pods/ephemeralcontainers`, `update pods` | **done** |
 | `CONTAINER_ATTACH` | Pod→Container (`pods/debug`/ephemeral) | partial — `pod-ephemeralcontainers-updates-pod` | covered (verb sibling) |
 | `ROLE_BIND` (+`crb_cr_cr`,`crb_cr_r`,`rb_rb_r`) | PermissionSet→PermissionSet | **yes** — `rolebinding-binds-role`, `clusterrolebinding-grants-all` | covered; KubeHound's scope taxonomy (RB→ClusterRole grants only namespace scope; CRB→ClusterRole grants cluster-wide) is a possible **refinement** |
-| `IDENTITY_IMPERSONATE` | PermissionSet→Identity | **no** | **ADD** (new family) |
-| `TOKEN_LIST` | PermissionSet→Identity (`list secrets`) | **no** (we have mint-token, not read-token-Secret) | **ADD** (identity assumption) |
-| `TOKEN_BRUTEFORCE` | PermissionSet→Identity (`get secrets`) | **no** | **ADD** (identity assumption) |
+| `IDENTITY_IMPERSONATE` | PermissionSet→Identity | **yes** — `impersonate-assumes-sa` (lowering) | **done** |
+| `TOKEN_LIST` | PermissionSet→Identity (`list secrets`) | **yes** — `read-token-secret-assumes-sa` (verb sibling) | **done** |
+| `TOKEN_BRUTEFORCE` | PermissionSet→Identity (`get secrets`) | **yes** — `read-token-secret-assumes-sa` | **done** |
 | `IDENTITY_ASSUME` | Container/Node→Identity (own a token) | conceptually — `serviceaccount-token-is-sa-credential` (mint ⟹ act as SA) | covered (RBAC side); the runtime side is out of scope |
 | `PERMISSION_DISCOVER` | Identity→PermissionSet (`get rolebindings`) | n/a | out of scope — reconnaissance (a read, no privilege gain) |
 | `POD_CREATE` | PermissionSet→**Node** | partial — we model the *data* edges (`create pods` ⟹ get secret/configmap/sa/pvc/node, mint SA token) | node *takeover* is escape-mediated → out of scope |
@@ -156,17 +161,10 @@ secret→SA-token edges are the RBAC-relevant, worth-modeling parts.
 - ~~Add #3 (`patch pods ⟹ get secret`)~~ — **DONE** (2026-10-11): added as
   `pod-patch-image-reads-secret` and its ConfigMap sibling
   `pod-patch-image-reads-configmap`, both `[sound]` and proven live on kind.
-- **FOLLOWUP (next): #2** — `get`/`list secrets ⟹ assume SA`. Add a
-  `core::secrets.serviceAccountName: String` derived field (empty unless the
-  Secret is a `kubernetes.io/service-account-token`, from the
-  `kubernetes.io/service-account.name` annotation), then the transition
-  `get/list secrets ⟹ act as that SA` gated on
-  `resource.type == "kubernetes.io/service-account-token"`. Document the ≥1.24
-  caveat (tokens no longer auto-created as Secrets, so the edge only fires where
-  such Secrets exist). This is an *identity-assumption* edge — see the Modeling
-  note; the simplest honest encoding targets the SA's `get serviceaccounts` cube,
-  as the token-mint twin `serviceaccount-token-is-sa-credential` already does.
-- Treat #1 (`impersonate`) as the trigger to decide how woodpecker should model
-  identity assumption (aliasing primitive vs enumeration vs over-approximation)
-  before encoding it — it is the highest-impact escalation and the one that most
-  stresses the current `cube ⟹ cube` model.
+- ~~#2 — `get`/`list secrets ⟹ assume SA`~~ — **DONE** (2026-10-11):
+  `read-token-secret-assumes-sa`, using the added `core::secrets.serviceAccountName`
+  and `.type` derived fields, `[sound]` and proven live on kind (the e2e creates a
+  token Secret explicitly, per the ≥1.24 caveat).
+- ~~#1 (`impersonate`)~~ — **DONE** (2026-10-11): the identity-assumption modeling
+  decision was made (plan 18: per-source principal + lowering), implemented
+  (Layer A + B), and `impersonate-assumes-sa` is `[sound]` and proven live on kind.
