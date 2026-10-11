@@ -241,9 +241,12 @@ Identity` edge, expressed as sound single-hop transitions.
 ## Phasing
 
 - **Phase 1 (this): plan + feasibility review.** ← deliverable.
-- Phase 2: Layer A core (per-source principal, `principal{i}` schema extension,
-  escalate + eliminate), with golden tests incl. a principal-changing case and a
-  regression that existing transitions are unchanged.
+- Phase 2 **(landed 2026-10-11)**: Layer A core (per-source principal,
+  `principal{i}` schema extension, `rename_vars` principal remap, escalate +
+  eliminate), with golden tests: a principal-changing e2e case
+  (`e2e/identity-assumption`, `[sound]` `User read Secret` via an assumed
+  Account), focused `schema/source-principal` + `transition/source-principal`
+  goldens, and a regression that every existing golden is unchanged.
 - Phase 3: Layer B lowering + `impersonation-transitions.json`, with pruning.
 - Phase 4: the three k8s mechanisms as catalogue entries (`impersonate-assumes-sa`,
   `read-token-secret-assumes-sa`, `create-pod-assumes-sa`), each `[sound]`, e2e

@@ -247,6 +247,7 @@ fn expr_ops() {
         let out = match op {
             "rename" => expr::rename_vars(
                 &first(),
+                &expr::context_attr("principal1"),
                 &expr::context_attr("action1"),
                 &expr::context_attr("resource1"),
                 &expr::context_attr("context1"),
