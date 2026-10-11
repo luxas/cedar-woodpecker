@@ -48,9 +48,9 @@ Requires `kind`, `kubectl`, `docker` on `PATH`.
 
 ## Results (kind v1.37.0, Node,RBAC)
 
-62 transitions → **57 PASS, 0 FAIL, 5 SKIP**. The 2 node tests above PASS when
+63 transitions → **58 PASS, 0 FAIL, 5 SKIP**. The 2 node tests above PASS when
 run isolated; the normal runner reports them as SKIP (that is why `run.sh`
-alone shows 55 PASS / 7 SKIP). The 5 genuine SKIPs are environment/model
+alone shows 56 PASS / 7 SKIP). The 5 genuine SKIPs are environment/model
 boundaries, each with its reason printed, not failures:
 
 | SKIP | Why |

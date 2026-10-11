@@ -6,7 +6,7 @@ mechanisms worth adding as woodpecker transitions.
 
 - Source: `DataDog/KubeHound` @ `ba4cdde2fa17875932c8941c3932da2e1c80eca3`
   (2026-09-14), `docs/reference/attacks/` + `pkg/kubehound/graph/edge/`.
-- Our catalogue: 62 transitions / 46 mechanisms in [`transitions/`](transitions/).
+- Our catalogue: 63 transitions / 47 mechanisms in [`transitions/`](transitions/).
 
 KubeHound and this catalogue model different things and overlap in the middle.
 KubeHound is an **attack graph** over a live cluster: its edges include runtime
@@ -154,9 +154,18 @@ secret→SA-token edges are the RBAC-relevant, worth-modeling parts.
 ## Recommendation
 
 - ~~Add #3 (`patch pods ⟹ get secret`)~~ — **DONE** (2026-10-11): added as
-  `pod-patch-image-reads-secret`, `[sound]` and proven live on kind.
-- Add #2 (`get`/`list secrets ⟹ assume SA`) with a `secrets.serviceAccountName`
-  derived field, documenting the ≥1.24 caveat.
+  `pod-patch-image-reads-secret` and its ConfigMap sibling
+  `pod-patch-image-reads-configmap`, both `[sound]` and proven live on kind.
+- **FOLLOWUP (next): #2** — `get`/`list secrets ⟹ assume SA`. Add a
+  `core::secrets.serviceAccountName: String` derived field (empty unless the
+  Secret is a `kubernetes.io/service-account-token`, from the
+  `kubernetes.io/service-account.name` annotation), then the transition
+  `get/list secrets ⟹ act as that SA` gated on
+  `resource.type == "kubernetes.io/service-account-token"`. Document the ≥1.24
+  caveat (tokens no longer auto-created as Secrets, so the edge only fires where
+  such Secrets exist). This is an *identity-assumption* edge — see the Modeling
+  note; the simplest honest encoding targets the SA's `get serviceaccounts` cube,
+  as the token-mint twin `serviceaccount-token-is-sa-credential` already does.
 - Treat #1 (`impersonate`) as the trigger to decide how woodpecker should model
   identity assumption (aliasing primitive vs enumeration vs over-approximation)
   before encoding it — it is the highest-impact escalation and the one that most

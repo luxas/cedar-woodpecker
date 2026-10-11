@@ -82,5 +82,5 @@ Rendered on a kind-backed run (Force layout, `create pods` hub traced):
 
 ## Current numbers
 
-77 cubes · 62 implications · 29 Critical · 57 proven live (55 PASS + 2 ISOLATED)
+77 cubes · 63 implications · 29 Critical · 58 proven live (56 PASS + 2 ISOLATED)
 · 5 SKIP (each with its documented env/model reason in the edge panel).

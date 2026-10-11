@@ -1,12 +1,14 @@
-# update/patch Pod → get ConfigMap
+# update Pod → get ConfigMap
 
 **Paper:** Yang et al., CCS '25 §4 (implicit permissions of workload mutation); severity **Medium** (classification.txt; the ConfigMap read is Medium, cf. the Critical Secret twin in `# Critical`).
 Reference(s) formalized (from `assessment/trigger.txt`):
 - `update pods --> get configmaps`
-- `patch pods --> get configmaps`
 
-`update` and `patch` are the same mutation mechanism (one source), so they share
-this file.
+The sibling row `patch pods --> get configmaps` is filed separately in
+[`pod-patch-image-reads-configmap.md`](pod-patch-image-reads-configmap.md): `patch`
+has a *reachable* exploit (swap the container image to run attacker code against the
+already-mounted ConfigMaps) that this add-a-ref path does not. Both verbs can attempt
+either behaviour; each trigger row is filed once under its canonical mechanism.
 
 ## The implicit permission
 
@@ -66,8 +68,11 @@ permit(
 
 ## Modeling notes
 
-- Single `update` source subsumes the `patch pods --> get configmaps` row; the
-  example policy permits both verbs.
+- The transition's single source uses `update`; the `patch pods --> get configmaps`
+  row is filed under
+  [`pod-patch-image-reads-configmap.md`](pod-patch-image-reads-configmap.md), whose
+  image-swap exploit is reachable where this add-a-ref path is not. The example
+  policy permits both verbs.
 - Same projection as the create twin: `core::pods.configMapRefs`, confined to the
   Pod's namespace.
 - Severity Medium: ConfigMaps hold configuration, not credentials by design;

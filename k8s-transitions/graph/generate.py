@@ -208,7 +208,7 @@ def main():
             "transitions": len(ts),
             "edges": len(edges),
             "nodes": len(nodes),
-            "sources": "ImplicitPermission/.../trigger.txt (328 refs) -> 62 transitions",
+            "sources": "ImplicitPermission/.../trigger.txt (328 refs) -> 63 transitions",
             "paper": "Yang et al., Dangers Behind Access Control (CCS '25)",
             "repo_branch": "17-k8s-transitions",
             "schema": "k8s-transitions/k8s.cedarschema",

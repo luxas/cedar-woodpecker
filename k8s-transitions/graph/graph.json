@@ -1,9 +1,9 @@
 {
  "meta": {
-  "transitions": 62,
-  "edges": 62,
+  "transitions": 63,
+  "edges": 63,
   "nodes": 77,
-  "sources": "ImplicitPermission/.../trigger.txt (328 refs) -> 62 transitions",
+  "sources": "ImplicitPermission/.../trigger.txt (328 refs) -> 63 transitions",
   "paper": "Yang et al., Dangers Behind Access Control (CCS '25)",
   "repo_branch": "17-k8s-transitions",
   "schema": "k8s-transitions/k8s.cedarschema"
@@ -78,6 +78,26 @@
    "display": "pods",
    "indeg": 3,
    "outdeg": 0
+  },
+  {
+   "id": "get:core::configmaps",
+   "verb": "get",
+   "resource": "core::configmaps",
+   "group": "core",
+   "label": "get configmaps",
+   "display": "configmaps",
+   "indeg": 3,
+   "outdeg": 0
+  },
+  {
+   "id": "patch:core::pods",
+   "verb": "patch",
+   "resource": "core::pods",
+   "group": "core",
+   "label": "patch pods",
+   "display": "pods",
+   "indeg": 1,
+   "outdeg": 2
   },
   {
    "id": "create:apps::controllerrevisions",
@@ -170,16 +190,6 @@
    "outdeg": 0
   },
   {
-   "id": "get:core::configmaps",
-   "verb": "get",
-   "resource": "core::configmaps",
-   "group": "core",
-   "label": "get configmaps",
-   "display": "configmaps",
-   "indeg": 2,
-   "outdeg": 0
-  },
-  {
    "id": "get:core::pods",
    "verb": "get",
    "resource": "core::pods",
@@ -198,16 +208,6 @@
    "display": "serviceaccounts",
    "indeg": 2,
    "outdeg": 0
-  },
-  {
-   "id": "patch:core::pods",
-   "verb": "patch",
-   "resource": "core::pods",
-   "group": "core",
-   "label": "patch pods",
-   "display": "pods",
-   "indeg": 1,
-   "outdeg": 1
   },
   {
    "id": "update:core::namespaces_finalize",
@@ -1783,11 +1783,33 @@
    ]
   },
   {
+   "id": "pod-patch-image-reads-configmap",
+   "source": "patch:core::pods",
+   "target": "get:core::configmaps",
+   "name": "pod-patch-image-reads-configmap",
+   "title": "patch Pod (image swap) \u2192 get ConfigMap",
+   "when": "context.resource1.namespace == resource.namespace && context.resource1.configMapRefs.contains(resource.name)",
+   "severity": "Medium",
+   "severity_span": [
+    "Medium"
+   ],
+   "status": "PASS",
+   "status_reason": "",
+   "md": "pod-patch-image-reads-configmap.md",
+   "why": [
+    "https://github.com/kubernetes/kubernetes/blob/788c4eca67a3ba878ead2385db1f4e274f9fd3a9/pkg/apis/core/validation/validation.go#L5862",
+    "https://github.com/kubernetes/kubernetes/blob/788c4eca67a3ba878ead2385db1f4e274f9fd3a9/pkg/apis/core/validation/validation.go#L5875",
+    "https://github.com/kubernetes/kubernetes/blob/788c4eca67a3ba878ead2385db1f4e274f9fd3a9/pkg/api/v1/pod/util.go#L204",
+    "https://github.com/kubernetes/kubernetes/blob/788c4eca67a3ba878ead2385db1f4e274f9fd3a9/plugin/pkg/auth/authorizer/node/graph.go#L361",
+    "https://github.com/kubernetes/kubernetes/blob/788c4eca67a3ba878ead2385db1f4e274f9fd3a9/plugin/pkg/auth/authorizer/node/graph.go#L411"
+   ]
+  },
+  {
    "id": "pod-update-reads-configmap",
    "source": "update:core::pods",
    "target": "get:core::configmaps",
    "name": "pod-update-reads-configmap",
-   "title": "update/patch Pod \u2192 get ConfigMap",
+   "title": "update Pod \u2192 get ConfigMap",
    "when": "context.resource1.namespace == resource.namespace && context.resource1.configMapRefs.contains(resource.name)",
    "severity": "Medium",
    "severity_span": [

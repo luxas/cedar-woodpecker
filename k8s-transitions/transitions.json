@@ -647,6 +647,23 @@
       "when": "context.resource1.namespace == resource.namespace"
     },
     {
+      "name": "pod-patch-image-reads-configmap",
+      "principal": [
+        "k8s::User"
+      ],
+      "sources": [
+        {
+          "action": "k8s::Action::\"patch\"",
+          "resource": "core::pods"
+        }
+      ],
+      "target": {
+        "action": "k8s::Action::\"get\"",
+        "resource": "core::configmaps"
+      },
+      "when": "context.resource1.namespace == resource.namespace && context.resource1.configMapRefs.contains(resource.name)"
+    },
+    {
       "name": "pod-patch-image-reads-secret",
       "principal": [
         "k8s::User"
