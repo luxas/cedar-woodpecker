@@ -7,7 +7,7 @@ map to exactly one mechanism file below — verified programmatically, 0 unmappe
 `patch resourcequotas/status` maps to the status family, not to the primary
 resource's file). A **runnable** file ships `.json` transition(s) + `.cedar`
 example(s), each validated `[sound]` by [`../verify.sh`](../verify.sh)
-(61 sound / 0 failed). A **not synthesizable** file documents the mechanism and
+(62 sound / 0 failed). A **not synthesizable** file documents the mechanism and
 its Kubernetes WHY but ships no transition, with the reason given (woodpecker
 synthesizes *permit* policies only; or the schema lacks the target entity).
 
@@ -27,7 +27,8 @@ pairs.
 | [`pod-create-reads-node.md`](pod-create-reads-node.md) | 1 | Medium | runnable (1) |
 | [`pod-create-reads-namespace.md`](pod-create-reads-namespace.md) | 1 | Medium | runnable (1) |
 | [`pod-create-podschedulingcontexts.md`](pod-create-podschedulingcontexts.md) | 1 | Low | not synthesizable — resource.k8s.io group not in the schema |
-| [`pod-update-reads-secret.md`](pod-update-reads-secret.md) | 2 | Critical | runnable (1) |
+| [`pod-update-reads-secret.md`](pod-update-reads-secret.md) | 1 | Critical | runnable (1) |
+| [`pod-patch-image-reads-secret.md`](pod-patch-image-reads-secret.md) | 1 | Critical | runnable (1) |
 | [`pod-update-reads-configmap.md`](pod-update-reads-configmap.md) | 2 | Medium | runnable (1) |
 | [`pod-exec-reads-secret.md`](pod-exec-reads-secret.md) | 1 | Critical | runnable (1) |
 | [`pod-eviction-deletes-pod.md`](pod-eviction-deletes-pod.md) | 1 | Critical | runnable (1) |

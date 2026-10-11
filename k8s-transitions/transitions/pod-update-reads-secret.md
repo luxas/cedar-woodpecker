@@ -1,12 +1,14 @@
-# update/patch Pod → get Secret
+# update Pod → get Secret
 
 **Paper:** Yang et al., CCS '25 §4 (implicit permissions of workload mutation); severity **Critical** (classification.txt, `# Critical` bucket).
 Reference(s) formalized (from `assessment/trigger.txt`):
 - `update pods --> get secrets`
-- `patch pods --> get secrets`
 
-`update` and `patch` are the same mutation mechanism (one source), so they share
-this file.
+The sibling row `patch pods --> get secrets` is filed separately in
+[`pod-patch-image-reads-secret.md`](pod-patch-image-reads-secret.md): `patch` has
+a *reachable* exploit (swap the container image to run attacker code against the
+already-mounted Secrets) that this add-a-ref path does not. Both verbs can attempt
+either behaviour; each trigger row is filed once under its canonical mechanism.
 
 ## The implicit permission
 
@@ -69,10 +71,11 @@ permit(
 
 ## Modeling notes
 
-- The transition's single source uses `k8s::Action::"update"`; `patch` is the
-  same mechanism (a patch is a server-side update) and the example policy permits
-  both. The synthesized `when` therefore shows `context.action1 == …"update"`
-  but subsumes the `patch pods --> get secrets` row too.
+- The transition's single source uses `k8s::Action::"update"`. `patch` is the
+  same server-side mutation and the example policy permits both, but the
+  `patch pods --> get secrets` row is filed under
+  [`pod-patch-image-reads-secret.md`](pod-patch-image-reads-secret.md), whose
+  image-swap exploit is reachable where this add-a-ref path is not.
 - Same over-approximation as the create twin: deep spec references are projected
   to `core::pods.secretRefs`, and the implicit `get` is confined to those named
   Secrets in the Pod's namespace.

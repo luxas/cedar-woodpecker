@@ -6,7 +6,7 @@ mechanisms worth adding as woodpecker transitions.
 
 - Source: `DataDog/KubeHound` @ `ba4cdde2fa17875932c8941c3932da2e1c80eca3`
   (2026-09-14), `docs/reference/attacks/` + `pkg/kubehound/graph/edge/`.
-- Our catalogue: 61 transitions / 45 mechanisms in [`transitions/`](transitions/).
+- Our catalogue: 62 transitions / 46 mechanisms in [`transitions/`](transitions/).
 
 KubeHound and this catalogue model different things and overlap in the middle.
 KubeHound is an **attack graph** over a live cluster: its edges include runtime
@@ -29,8 +29,10 @@ transition model does not natively express:
    model the mint path (`serviceaccounts/token`) but not the read-a-token-Secret
    path.
 3. **`patch pods` → read the pod's mounted Secrets** (`POD_PATCH`) — a verb
-   sibling of our `pods/exec` and `pods/ephemeralcontainers` edges that we do
-   not currently carry.
+   sibling of our `pods/exec` and `pods/ephemeralcontainers` edges.
+   **DONE** (2026-10-11): added as
+   [`pod-patch-image-reads-secret`](transitions/pod-patch-image-reads-secret.md),
+   `[sound]` and proven live on kind.
 
 (1) and (2) are the same shape — **identity assumption** (`→ Identity` in
 KubeHound): the attacker gains *all* of a target identity's permissions, not one
@@ -42,7 +44,7 @@ specific `(action, resource)`. That is not a single `p ⟹ q` transition; see
 | KubeHound edge | KubeHound shape | In this catalogue? | Disposition |
 |---|---|---|---|
 | `POD_EXEC` | PermissionSet→Pod | **yes** — `pod-exec-reads-secret` (`pods/exec` ⟹ get secret) | covered |
-| `POD_PATCH` | PermissionSet→Pod | partial — we have `pods/ephemeralcontainers`, `update pods`; **not** `patch pods` image-swap → code-exec → mounted secret | **ADD** |
+| `POD_PATCH` | PermissionSet→Pod | **yes** — `pod-patch-image-reads-secret` (`patch pods` image-swap → code-exec → mounted secret); also `pods/ephemeralcontainers`, `update pods` | **done** |
 | `CONTAINER_ATTACH` | Pod→Container (`pods/debug`/ephemeral) | partial — `pod-ephemeralcontainers-updates-pod` | covered (verb sibling) |
 | `ROLE_BIND` (+`crb_cr_cr`,`crb_cr_r`,`rb_rb_r`) | PermissionSet→PermissionSet | **yes** — `rolebinding-binds-role`, `clusterrolebinding-grants-all` | covered; KubeHound's scope taxonomy (RB→ClusterRole grants only namespace scope; CRB→ClusterRole grants cluster-wide) is a possible **refinement** |
 | `IDENTITY_IMPERSONATE` | PermissionSet→Identity | **no** | **ADD** (new family) |
@@ -109,6 +111,15 @@ verb (`patch` rather than `create pods/exec` or `update pods`). Directly
 modelable now with the existing `core::pods.secretRefs` derived field:
 `patch pods ⟹ get secret` when `resource1.secretRefs.contains(secret.name)`.
 
+**Status: DONE** (2026-10-11) —
+[`pod-patch-image-reads-secret`](transitions/pod-patch-image-reads-secret.md):
+`patch pods ⟹ get secrets` when `resource1.namespace == resource.namespace &&
+resource1.secretRefs.contains(resource.name)`, verified `[sound]` and proven live
+in [`e2e/tests/pod-patch-image-reads-secret.sh`](e2e/tests/pod-patch-image-reads-secret.sh)
+(image swap → attacker code → mounted-Secret read). The `patch pods --> get secrets`
+trigger row moved here from `pod-update-reads-secret`, whose add-a-ref path is the
+*unreachable* twin (blocked by Pod immutability).
+
 ### (optional) ROLE_BIND scope refinement
 
 Our two binding transitions assert the escalation; KubeHound additionally
@@ -142,8 +153,8 @@ secret→SA-token edges are the RBAC-relevant, worth-modeling parts.
 
 ## Recommendation
 
-- Add #3 (`patch pods ⟹ get secret`) now — trivial, uses an existing derived
-  field, fits the model exactly.
+- ~~Add #3 (`patch pods ⟹ get secret`)~~ — **DONE** (2026-10-11): added as
+  `pod-patch-image-reads-secret`, `[sound]` and proven live on kind.
 - Add #2 (`get`/`list secrets ⟹ assume SA`) with a `secrets.serviceAccountName`
   derived field, documenting the ≥1.24 caveat.
 - Treat #1 (`impersonate`) as the trigger to decide how woodpecker should model
