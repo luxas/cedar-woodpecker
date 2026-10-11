@@ -1,0 +1,7 @@
+{ "impersonations": [ {
+  "name": "impersonate-assumes-sa",
+  "principal": ["k8s::User"],
+  "sources": [ { "action": "k8s::Action::\"impersonate\"", "resource": "io::k8s::authentication::serviceaccounts" } ],
+  "assume": "k8s::ServiceAccount",
+  "when": "context.assumed.name == context.resource1.name && context.assumed.namespace.name == context.resource1.namespace"
+} ] }

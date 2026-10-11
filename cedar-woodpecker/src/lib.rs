@@ -47,6 +47,7 @@ pub mod cubes;
 pub mod equiv;
 pub mod escalate;
 pub mod expr;
+pub mod impersonate;
 pub mod schema;
 pub mod sets;
 pub mod transition;
@@ -61,6 +62,7 @@ use cedar_policy_symcc::CedarSymCompiler;
 
 pub use cubes::{source_cubes, SourceCube};
 pub use escalate::{escalate, Escalation};
+pub use impersonate::Impersonation;
 pub use schema::{extend_schema, ExtendedSchema};
 pub use transition::{SourceEnv, Transition};
 

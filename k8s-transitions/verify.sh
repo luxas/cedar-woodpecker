@@ -18,8 +18,9 @@ fi
 : "${CVC5:=$(command -v cvc5 || true)}"
 export CVC5
 
-fail=0 ok=0 skipped=0
+fail=0 ok=0 skipped=0 imp_ok=0
 for json in transitions/*.json; do
+  case "$json" in *.imp.json) continue;; esac   # impersonations handled below
   name="$(basename "${json%.json}")"
   cedar="transitions/${name}.cedar"
   if [ ! -f "$cedar" ]; then
@@ -35,6 +36,26 @@ for json in transitions/*.json; do
   echo "ok    $name"; ok=$((ok+1))
 done
 
+# impersonation definitions (identity assumption, plan 18): each
+# transitions/<name>.imp.json with a sibling <name>.cedar example is lowered and
+# must synthesize at least one [sound] policy.
+for imp in transitions/*.imp.json; do
+  [ -e "$imp" ] || continue
+  name="$(basename "${imp%.imp.json}")"
+  cedar="transitions/${name}.cedar"
+  if [ ! -f "$cedar" ]; then
+    echo "FAIL  $name: impersonation has no example .cedar"; fail=$((fail+1)); continue
+  fi
+  out="$("$WP" escalate --schema "$SCHEMA" --policies "$cedar" --impersonations "$imp" 2>&1 || true)"
+  if ! grep -q '^// ' <<<"$out"; then
+    echo "FAIL  $name: no escalation reported"; echo "$out" | sed 's/^/      /'; fail=$((fail+1)); continue
+  fi
+  if grep -q '\[unsound\]\|NOT VALID' <<<"$out"; then
+    echo "FAIL  $name: an escalation was unsound/invalid"; echo "$out" | sed 's/^/      /'; fail=$((fail+1)); continue
+  fi
+  echo "ok    $name (impersonation)"; imp_ok=$((imp_ok+1))
+done
+
 echo
-echo "sound=$ok  failed=$fail  deny-side-skipped=$skipped"
+echo "sound=$ok  impersonations=$imp_ok  failed=$fail  deny-side-skipped=$skipped"
 [ "$fail" -eq 0 ]

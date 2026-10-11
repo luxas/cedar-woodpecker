@@ -1,1 +1,1 @@
-principal.x == context.context1.y
+context.principal1.x == context.context1.y

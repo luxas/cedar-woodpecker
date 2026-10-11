@@ -1,0 +1,6 @@
+create-pod-assumes-account
+  principal: User
+  sources: Action::"create" on Pod, Action::"read" on Secret
+  target: Action::"read" on Secret
+  when: (context.principal2.name == context.resource1.runsAs) && (context.resource2 == resource)
+  added: action1, resource1, context1, action2, resource2, context2, principal2

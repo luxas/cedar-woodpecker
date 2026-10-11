@@ -1,1 +1,1 @@
-principal.x == 1
+context.principal1.x == 1

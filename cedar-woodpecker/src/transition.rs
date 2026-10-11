@@ -31,12 +31,18 @@
 //! ```
 //!
 //! `principal` is optional: without it, every principal type applicable to
-//! the target action and to every source action. `when` is a Cedar
-//! expression over `principal`, `action`, `resource` and `context` (the
+//! the target action and to every source action. A source may carry its own
+//! `principal` type (identity assumption): a source without one shares the
+//! target principal — its cube's `principal` denotes the target principal
+//! directly (the pre-existing behavior) — while a source with one is a
+//! different identity, its cube's `principal` renamed to `context.principal{i}`
+//! (an added entity-typed context attribute) that `when` binds. `when` is a
+//! Cedar expression over `principal`, `action`, `resource` and `context` (the
 //! target request) and `context.action{i}` / `context.resource{i}` /
-//! `context.context{i}` (the `i`-th source request, 1-based; its context has
-//! the type the schema gives the source action, an empty record when it
-//! declares none).
+//! `context.context{i}` / `context.principal{i}` (the `i`-th source request,
+//! 1-based; its context has the type the schema gives the source action, an
+//! empty record when it declares none; `context.principal{i}` appears only for
+//! a source that sets its own principal).
 
 use std::str::FromStr;
 
@@ -48,9 +54,13 @@ use smol_str::SmolStr;
 use crate::Error;
 
 /// A request environment of a transition: an action and a resource type
-/// (the principal type is the transition's).
+/// (the principal type is the transition's, unless the source overrides it).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SourceEnv {
+    /// The principal type for this environment, or `None` to use the
+    /// transition's (target) principal — the default-identity case, in which
+    /// the escalation binds this environment's principal to the target's.
+    pub principal: Option<EntityTypeName>,
     /// The action.
     pub action: EntityUid,
     /// The resource type.
@@ -66,6 +76,12 @@ impl SourceEnv {
             self.resource.clone(),
         )
     }
+
+    /// This environment's own principal type if set, else `default` (the
+    /// transition's target principal).
+    pub fn principal_or<'a>(&'a self, default: &'a EntityTypeName) -> &'a EntityTypeName {
+        self.principal.as_ref().unwrap_or(default)
+    }
 }
 
 /// The context attributes of the extended schema that hold one intermediate
@@ -78,6 +94,9 @@ pub struct SourceAttrs {
     pub resource: SmolStr,
     /// The context.
     pub context: SmolStr,
+    /// The principal (`principal{i}`), only for a source that overrides the
+    /// transition's principal; `None` for a default-identity source.
+    pub principal: Option<SmolStr>,
 }
 
 /// A transition function `(pt, [(at_i, rt_i)], at', rt', T)`.
@@ -117,18 +136,33 @@ fn default_when() -> String {
 
 #[derive(Deserialize)]
 struct EnvSpec {
+    #[serde(default)]
+    principal: Option<String>,
     action: String,
     resource: String,
 }
 
 impl EnvSpec {
     fn parse(&self, what: &str) -> Result<SourceEnv, Error> {
+        let principal = self
+            .principal
+            .as_ref()
+            .map(|p| {
+                EntityTypeName::from_str(p).map_err(|e| {
+                    Error::Transitions(format!("{what}: principal `{p}`: {e}"))
+                })
+            })
+            .transpose()?;
         let action = EntityUid::from_str(&self.action)
             .map_err(|e| Error::Transitions(format!("{what}: action `{}`: {e}", self.action)))?;
         let resource = EntityTypeName::from_str(&self.resource).map_err(|e| {
             Error::Transitions(format!("{what}: resource `{}`: {e}", self.resource))
         })?;
-        Ok(SourceEnv { action, resource })
+        Ok(SourceEnv {
+            principal,
+            action,
+            resource,
+        })
     }
 }
 
@@ -192,7 +226,10 @@ impl Transition {
         };
         let mut types: Vec<EntityTypeName> = candidates
             .filter(|pt| {
-                self.sources.iter().all(|s| {
+                // only default-identity sources (no own principal) constrain the
+                // target principal; a set-principal source is validated against
+                // its own fixed type, not folded into this intersection
+                self.sources.iter().filter(|s| s.principal.is_none()).all(|s| {
                     schema
                         .principals_for_action(&s.action)
                         .is_some_and(|mut ps| ps.any(|p| p == *pt))
@@ -207,11 +244,17 @@ impl Transition {
     /// The context attribute names the extended schema adds for the `i`-th
     /// source (1-based): `action{i}`, `resource{i}`, `context{i}`.
     pub fn context_attrs(&self) -> Vec<SourceAttrs> {
-        (1..=self.sources.len())
-            .map(|i| SourceAttrs {
-                action: format!("action{i}").into(),
-                resource: format!("resource{i}").into(),
-                context: format!("context{i}").into(),
+        self.sources
+            .iter()
+            .enumerate()
+            .map(|(idx, source)| {
+                let i = idx + 1;
+                SourceAttrs {
+                    action: format!("action{i}").into(),
+                    resource: format!("resource{i}").into(),
+                    context: format!("context{i}").into(),
+                    principal: source.principal.as_ref().map(|_| format!("principal{i}").into()),
+                }
             })
             .collect()
     }
@@ -220,7 +263,13 @@ impl Transition {
     pub fn added_attrs(&self) -> Vec<SmolStr> {
         self.context_attrs()
             .into_iter()
-            .flat_map(|a| [a.action, a.resource, a.context])
+            .flat_map(|a| {
+                let mut v = vec![a.action, a.resource, a.context];
+                if let Some(p) = a.principal {
+                    v.push(p);
+                }
+                v
+            })
             .collect()
     }
 }
