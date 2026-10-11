@@ -247,7 +247,12 @@ Identity` edge, expressed as sound single-hop transitions.
   (`e2e/identity-assumption`, `[sound]` `User read Secret` via an assumed
   Account), focused `schema/source-principal` + `transition/source-principal`
   goldens, and a regression that every existing golden is unchanged.
-- Phase 3: Layer B lowering + `impersonation-transitions.json`, with pruning.
+- Phase 3 **(landed 2026-10-11)**: Layer B lowering — `impersonation-transitions.json`
+  (`src/impersonate.rs`), lowered against the source cubes (pruned to the assumed
+  identity's actual environments) and appended via `escalate --impersonations` or
+  the e2e harness. `context.assumed` in the `when` resolves to the assumed source's
+  `context.principal{k}`. Golden `e2e/impersonation` reproduces the Phase-2 result
+  from a concise impersonation definition.
 - Phase 4: the three k8s mechanisms as catalogue entries (`impersonate-assumes-sa`,
   `read-token-secret-assumes-sa`, `create-pod-assumes-sa`), each `[sound]`, e2e
   on kind, graph (a new `⟹ Identity` edge class), and close `KUBEHOUND-GAP.md`

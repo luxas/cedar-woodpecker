@@ -33,7 +33,7 @@ use cedar_woodpecker::cubes::{cubes_to_cedar, cubes_to_json};
 use cedar_woodpecker::escalate::Setup;
 use cedar_woodpecker::{
     equiv, escalate, evaluator_with, expr, extend_schema, parse_entities, parse_policies, sets,
-    source_cubes, Budgets, Error, LoadedSchema, Transition,
+    source_cubes, Budgets, Error, Impersonation, LoadedSchema, Transition,
 };
 use smol_str::SmolStr;
 
@@ -146,8 +146,16 @@ async fn run_e2e(case: &Path) -> Result<(String, serde_json::Value), Error> {
     .await?;
     let mut text = format!("// == cubes ==\n{}", cubes_to_cedar(&cubes)?);
     let mut json = serde_json::json!({ "cubes": cubes_to_json(&cubes) });
-    if let Some(transitions) = read_opt(case, "transitions.json") {
-        let transitions = Transition::parse_json(&transitions)?;
+    let mut transitions: Vec<Transition> = Vec::new();
+    if let Some(t) = read_opt(case, "transitions.json") {
+        transitions.extend(Transition::parse_json(&t)?);
+    }
+    if let Some(imp) = read_opt(case, "impersonations.json") {
+        for i in Impersonation::parse_json(&imp)? {
+            transitions.extend(i.lower(&cubes));
+        }
+    }
+    if !transitions.is_empty() {
         let setup = Setup {
             schema: &schema.schema,
             schema_json: &schema.json,
