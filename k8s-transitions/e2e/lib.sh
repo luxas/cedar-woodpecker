@@ -128,6 +128,36 @@ _csv_quote() { local IFS=, first=1 x; for x in $1; do [ $first -eq 1 ] || echo -
 # as_subj SUBJECT kubectl-args...   (impersonation; RBAC is evaluated as SUBJECT)
 as_subj() { local s=$1; shift; K --as="$s" "$@"; }
 
+# ktoken TOKEN kubectl-args...  -- run kubectl authenticating ONLY as TOKEN, via
+# a throwaway token-only kubeconfig built from the context's cluster. Needed
+# because `kubectl --token` still presents the context's client certificate,
+# which the apiserver authenticates first (so the token would be ignored).
+ktoken() {
+  local tok=$1; shift
+  local kc; kc="$(mktemp "${TMPDIR:-/tmp}/wp-kc.XXXXXX")"
+  local server ca
+  server="$(K config view --raw --minify -o jsonpath='{.clusters[0].cluster.server}')"
+  ca="$(K config view --raw --minify -o jsonpath='{.clusters[0].cluster.certificate-authority-data}')"
+  cat > "$kc" <<EOF
+apiVersion: v1
+kind: Config
+clusters:
+- name: c
+  cluster: { server: $server, certificate-authority-data: $ca }
+users:
+- name: u
+  user: { token: $tok }
+contexts:
+- name: ctx
+  context: { cluster: c, user: u }
+current-context: ctx
+EOF
+  kubectl --kubeconfig="$kc" "$@"
+  local rc=$?
+  rm -f "$kc"
+  return $rc
+}
+
 # ---- assertions ------------------------------------------------------------
 # _cani SUBJECT VERB RESOURCE [NS]  -> prints yes/no.
 # RESOURCE may be "pods/exec": `kubectl auth can-i` needs the subresource via

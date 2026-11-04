@@ -186,12 +186,21 @@ pub fn simplify(e: &Expr) -> Expr {
     }
 }
 
-/// `expr` with every `action` variable replaced by `action`, every
-/// `resource` by `resource` and every `context` by `context` (the source
-/// cube's variables becoming the intermediate request of the target
-/// environment), structure and source locations kept.
-pub fn rename_vars(expr: &Expr, action: &Expr, resource: &Expr, context: &Expr) -> Expr {
+/// `expr` with every `principal` variable replaced by `principal`, every
+/// `action` by `action`, every `resource` by `resource` and every `context`
+/// by `context` (the source cube's variables becoming the intermediate request
+/// of the target environment), structure and source locations kept. For a
+/// default-identity source `principal` is the target `principal` variable (a
+/// no-op); for a source with its own principal it is `context.principal{i}`.
+pub fn rename_vars(
+    expr: &Expr,
+    principal: &Expr,
+    action: &Expr,
+    resource: &Expr,
+    context: &Expr,
+) -> Expr {
     map_expr(expr, &|n| match n.expr_kind() {
+        ExprKind::Var(Var::Principal) => Some(principal.clone()),
         ExprKind::Var(Var::Action) => Some(action.clone()),
         ExprKind::Var(Var::Resource) => Some(resource.clone()),
         ExprKind::Var(Var::Context) => Some(context.clone()),

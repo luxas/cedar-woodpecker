@@ -107,6 +107,8 @@ All line numbers pin `kubernetes/kubernetes@788c4eca67a3ba878ead2385db1f4e274f9f
 | `core::pods` | `serviceAccountRef` | `String` | `Spec.ServiceAccountName` | [`Graph.AddPod` SA edge](https://github.com/kubernetes/kubernetes/blob/788c4eca67a3ba878ead2385db1f4e274f9fd3a9/plugin/pkg/auth/authorizer/node/graph.go#L385) |
 | `core::pods` | `nodeName` | `String` | `Spec.NodeName` (scheduling target) | [`Graph.AddPod` node edge](https://github.com/kubernetes/kubernetes/blob/788c4eca67a3ba878ead2385db1f4e274f9fd3a9/plugin/pkg/auth/authorizer/node/graph.go#L361) |
 | `core::serviceaccounts` | `secretRefs` | `Set<String>` | Secrets holding this SA's auto-generated legacy tokens | [legacy token cleaner](https://github.com/kubernetes/kubernetes/blob/788c4eca67a3ba878ead2385db1f4e274f9fd3a9/pkg/controller/serviceaccount/legacy_serviceaccount_token_cleaner.go) |
+| `core::secrets` | `type` | `String` | the Secret's `.type`, e.g. `kubernetes.io/service-account-token` | [`SecretTypeServiceAccountToken`](https://github.com/kubernetes/kubernetes/blob/788c4eca67a3ba878ead2385db1f4e274f9fd3a9/staging/src/k8s.io/api/core/v1/types.go#L8467) |
+| `core::secrets` | `serviceAccountName` | `String` | for a service-account-token Secret, the SA it identifies (annotation `kubernetes.io/service-account.name`) | [`ServiceAccountNameKey`](https://github.com/kubernetes/kubernetes/blob/788c4eca67a3ba878ead2385db1f4e274f9fd3a9/staging/src/k8s.io/api/core/v1/types.go#L8470) |
 | `core::persistentvolumes` | `storageClassName` | `String` | `Spec.StorageClassName` | PV spec |
 | `core::persistentvolumes` | `claimRef` | `String` | `Spec.ClaimRef.Name` (bound PVC) | PV spec |
 | `core::persistentvolumeclaims` | `storageClassName` | `String` | `Spec.StorageClassName` | PVC spec |

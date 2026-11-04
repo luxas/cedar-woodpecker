@@ -1,0 +1,6 @@
+entity User;
+entity Account = { "name": String };
+entity Pod = { "runsAs": String };
+entity Secret;
+action "create" appliesTo { principal: [User, Account], resource: [Pod], context: {} };
+action "read" appliesTo { principal: [User, Account], resource: [Secret], context: {} };

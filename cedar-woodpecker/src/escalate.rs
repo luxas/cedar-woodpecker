@@ -35,7 +35,7 @@ use cedar_policy::{
 };
 use cedar_policy_core::ast::{
     self, ActionConstraint, Annotation, Annotations, AnyId, Effect, Expr, Literal, PolicyID,
-    PrincipalConstraint, ResourceConstraint, StaticPolicy,
+    PrincipalConstraint, ResourceConstraint, StaticPolicy, Var,
 };
 use cedar_policy_symcc::dnf::{allow_cubes, conjuncts, DnfError};
 use cedar_policy_symcc::semantics::Assumption;
@@ -291,7 +291,7 @@ pub async fn escalate<S: Solver + Send>(
             // the candidates of every source environment; none anywhere ⇒ no path
             let mut per_source: Vec<(RequestEnv, Vec<&SourceCube>)> = Vec::new();
             for source in &transition.sources {
-                let env = source.env(&pt);
+                let env = source.env(source.principal_or(&pt));
                 let cubes: Vec<&SourceCube> = sources.iter().filter(|c| c.env == env).collect();
                 per_source.push((env, cubes));
             }
@@ -326,15 +326,19 @@ pub async fn escalate<S: Solver + Send>(
                 let action_e = context_attr(&attrs.action);
                 let resource_e = context_attr(&attrs.resource);
                 let context_e = context_attr(&attrs.context);
+                // a default-identity source keeps the target `principal`; a
+                // source with its own principal reads `context.principal{i}`
+                let principal_e = match &attrs.principal {
+                    Some(p) => context_attr(p),
+                    None => Expr::var(Var::Principal),
+                };
                 conj.push(Expr::is_eq(
                     action_e.clone(),
                     Expr::val(Literal::EntityUID(Arc::new(env.action().as_ref().clone()))),
                 ));
-                if let Some(disj) = or_chain(
-                    cubes
-                        .iter()
-                        .map(|c| rename_vars(&c.condition, &action_e, &resource_e, &context_e)),
-                ) {
+                if let Some(disj) = or_chain(cubes.iter().map(|c| {
+                    rename_vars(&c.condition, &principal_e, &action_e, &resource_e, &context_e)
+                })) {
                     conj.push(disj);
                 }
             }

@@ -29,6 +29,21 @@ def load_transitions():
     return json.load(open(os.path.join(ROOT, "transitions.json")))["transitions"]
 
 
+def load_impersonations():
+    """Each transitions/*.imp.json -> [{name, sources:[(action,resource)], assume, when}]
+    (identity assumption, plan 18 Layer B)."""
+    out = []
+    for p in sorted(glob.glob(os.path.join(ROOT, "transitions", "*.imp.json"))):
+        for imp in json.load(open(p)).get("impersonations", []):
+            out.append({
+                "name": imp["name"],
+                "sources": [(s["action"], s["resource"]) for s in imp.get("sources", [])],
+                "assume": imp["assume"],
+                "when": imp.get("when", "true"),
+            })
+    return out
+
+
 def load_e2e_status():
     """name -> {status, reason}. Reads the committed per-test RESULT line so each
     SKIP carries its reason. A node test the shared runner guards ('runs it
@@ -164,6 +179,26 @@ def main():
                 "display": display,
                 "indeg": 0,
                 "outdeg": 0,
+                "kind": "cube",
+            }
+        return nid
+
+    def identity_node(assume):
+        """A node for an assumed principal type (the `⟹ Identity` edge target):
+        holding any inbound permission grants every permission the identity has."""
+        nid = f"identity:{assume}"
+        if nid not in nodes:
+            base = assume.split("::")[-1]
+            nodes[nid] = {
+                "id": nid,
+                "verb": "assume",
+                "resource": assume,
+                "group": "identity",
+                "label": f"assume {base}",
+                "display": base,
+                "indeg": 0,
+                "outdeg": 0,
+                "kind": "identity",
             }
         return nid
 
@@ -203,10 +238,42 @@ def main():
             nodes[src]["outdeg"] += 1
             nodes[tgt]["indeg"] += 1
 
+    # identity assumption (plan 18 Layer B): each impersonation becomes a
+    # `⟹ Identity` edge from its source cube(s) to an identity node -- the assumed
+    # principal type, holding which grants every permission that identity has.
+    imps = load_impersonations()
+    for imp in imps:
+        name = imp["name"]
+        meta = md_meta.get(f"{name}.md", {})
+        tgt = identity_node(imp["assume"])
+        status = e2e.get(name, {}).get("status", "UNKNOWN")
+        status_reason = e2e.get(name, {}).get("reason", "")
+        for i, (action, resource) in enumerate(imp["sources"]):
+            src = node_id(action, resource)
+            edges.append({
+                "id": f"{name}#{i}",
+                "source": src,
+                "target": tgt,
+                "name": name,
+                "title": meta.get("title", name),
+                "when": imp["when"],
+                "severity": "Critical",
+                "severity_span": ["Critical"],
+                "status": status,
+                "status_reason": status_reason,
+                "md": meta.get("md", f"{name}.md"),
+                "why": meta.get("why", []),
+                "kind": "identity",
+            })
+            nodes[src]["outdeg"] += 1
+            nodes[tgt]["indeg"] += 1
+
     graph = {
         "meta": {
             "transitions": len(ts),
+            "impersonations": len(imps),
             "edges": len(edges),
+            "identity_edges": sum(1 for e in edges if e.get("kind") == "identity"),
             "nodes": len(nodes),
             "sources": "ImplicitPermission/.../trigger.txt (328 refs) -> 63 transitions",
             "paper": "Yang et al., Dangers Behind Access Control (CCS '25)",

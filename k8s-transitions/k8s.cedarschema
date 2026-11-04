@@ -3641,6 +3641,8 @@ namespace core {
   entity secrets = {
     "apiGroup": __cedar::String,
     "name": __cedar::String,
+    "type": __cedar::String,                  // Secret .type, e.g. "kubernetes.io/service-account-token" [derived, see SCHEMA.md]
+    "serviceAccountName": __cedar::String,     // for a token Secret, the SA it identifies (annotation kubernetes.io/service-account.name) [derived, see SCHEMA.md]
     "namespace": k8s::Namespace,
     "request"?: core::VersionedSecret,
     "resourceCombined": __cedar::String,

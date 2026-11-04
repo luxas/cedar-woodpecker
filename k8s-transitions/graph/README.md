@@ -82,5 +82,24 @@ Rendered on a kind-backed run (Force layout, `create pods` hub traced):
 
 ## Current numbers
 
-77 cubes · 63 implications · 29 Critical · 58 proven live (56 PASS + 2 ISOLATED)
+79 cubes · 67 implications · 33 Critical · 62 proven live (60 PASS + 2 ISOLATED)
 · 5 SKIP (each with its documented env/model reason in the edge panel).
+
+Of the 67 implications, 4 are **`⟹ Identity` edges** (identity assumption, plan 18):
+a source cube points to a diamond **identity node** (the assumed principal, e.g.
+`assume ServiceAccount`), meaning the holder gains *every* permission that
+identity has. The four — `impersonate serviceaccounts`, `get secrets` (a token
+Secret), `create pods` (as the SA), and `create serviceaccounts/token` (mint a
+token) — all converge on `assume ServiceAccount` and are proven live on kind.
+
+Tracing the identity node shows its four inbound permissions, plus everything
+upstream of `create pods` (each workload controller), since all of them reach
+the ServiceAccount transitively:
+
+![assume ServiceAccount identity node traced, with its four inbound permissions](figures/identity-trace.png)
+
+The `get secrets ⟹ assume ServiceAccount` edge panel shows the binding: the
+Secret must be a service-account token, and the assumed SA is the one its
+`serviceAccountName` names, in the same namespace:
+
+![get secrets to assume ServiceAccount edge detail](figures/identity-edge.png)

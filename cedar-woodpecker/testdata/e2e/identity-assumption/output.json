@@ -1,0 +1,61 @@
+{
+  "cubes": [
+    {
+      "principal": "Account",
+      "action": "Action::\"read\"",
+      "resource": "Secret",
+      "id": "policy1.cube0",
+      "condition": "true",
+      "outcomes": [
+        "True"
+      ]
+    },
+    {
+      "principal": "User",
+      "action": "Action::\"create\"",
+      "resource": "Pod",
+      "id": "policy0.cube0",
+      "condition": "true",
+      "outcomes": [
+        "True"
+      ]
+    }
+  ],
+  "escalations": [
+    {
+      "transition": "create-pod-assumes-account",
+      "principal": "User",
+      "sources": [
+        {
+          "principal": "User",
+          "action": "Action::\"create\"",
+          "resource": "Pod",
+          "cubes": [
+            "policy0.cube0"
+          ]
+        },
+        {
+          "principal": "Account",
+          "action": "Action::\"read\"",
+          "resource": "Secret",
+          "cubes": [
+            "policy1.cube0"
+          ]
+        }
+      ],
+      "target": {
+        "principal": "User",
+        "action": "Action::\"read\"",
+        "resource": "Secret",
+        "cubes": [
+          "woodpecker.create-pod-assumes-account.cube0"
+        ]
+      },
+      "path_id": "woodpecker.create-pod-assumes-account.cube0",
+      "path": "(context.action1 == Action::\"create\") && (context.action2 == Action::\"read\") && (context.principal2.name == context.resource1.runsAs) && (context.resource2 == resource)",
+      "policy": "@woodpecker(\"create-pod-assumes-account: policy0.cube0, policy1.cube0\")\npermit(\n  principal is User,\n  action == Action::\"read\",\n  resource is Secret\n);",
+      "sound": true,
+      "problem": null
+    }
+  ]
+}

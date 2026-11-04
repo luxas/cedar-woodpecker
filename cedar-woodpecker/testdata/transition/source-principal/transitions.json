@@ -1,0 +1,10 @@
+{ "transitions": [ {
+  "name": "create-pod-assumes-account",
+  "principal": ["User"],
+  "sources": [
+    { "action": "Action::\"create\"", "resource": "Pod" },
+    { "principal": "Account", "action": "Action::\"read\"", "resource": "Secret" }
+  ],
+  "target": { "action": "Action::\"read\"", "resource": "Secret" },
+  "when": "context.principal2.name == context.resource1.runsAs && context.resource2 == resource"
+} ] }

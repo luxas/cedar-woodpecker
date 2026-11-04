@@ -28,7 +28,7 @@ use cedar_woodpecker::cubes::{cubes_to_cedar, cubes_to_json};
 use cedar_woodpecker::escalate::Setup;
 use cedar_woodpecker::{
     escalate, evaluator_with, parse_entities, parse_policies, source_cubes, Budgets, Error,
-    LoadedSchema, Transition,
+    Impersonation, LoadedSchema, Transition,
 };
 use clap::{Args, Parser, Subcommand};
 
@@ -85,7 +85,11 @@ struct EscalateArgs {
     inputs: Inputs,
     /// The transition functions (JSON).
     #[arg(long)]
-    transitions: PathBuf,
+    transitions: Option<PathBuf>,
+    /// Impersonation definitions (JSON); lowered to transitions against the
+    /// source cubes (identity assumption, plan 18).
+    #[arg(long)]
+    impersonations: Option<PathBuf>,
 }
 
 fn read(path: &Path) -> Result<String, Error> {
@@ -169,7 +173,15 @@ async fn run(command: Command) -> Result<String, Error> {
             }
         }
         Command::Escalate(args) => {
-            let transitions = Transition::parse_json(&read(&args.transitions)?)?;
+            let mut transitions = match &args.transitions {
+                Some(path) => Transition::parse_json(&read(path)?)?,
+                None => Vec::new(),
+            };
+            if let Some(path) = &args.impersonations {
+                for imp in Impersonation::parse_json(&read(path)?)? {
+                    transitions.extend(imp.lower(&cubes));
+                }
+            }
             let setup = Setup {
                 schema: &loaded.schema.schema,
                 schema_json: &loaded.schema.json,

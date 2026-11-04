@@ -255,6 +255,19 @@ pub fn extend_schema(base: &Value, transition: &Transition) -> Result<ExtendedSc
             refs.push((attr.clone(), reference(&ns, &alias)));
             aliases.push((ns, alias, ty));
         }
+        // identity assumption: a source with its own principal gets an added
+        // `principal{i}` context attribute, typed as that principal entity type
+        // (aliased in its defining namespace), exactly like `resource{i}`.
+        if let (Some(pattr), Some(ptype)) = (&attrs.principal, &source.principal) {
+            let principal_ns = ptype.namespace();
+            let alias = format!("__woodpecker_{pattr}");
+            refs.push((pattr.clone(), reference(&principal_ns, &alias)));
+            aliases.push((
+                principal_ns,
+                alias,
+                json!({ "type": "Entity", "name": ptype.basename() }),
+            ));
+        }
     }
     let mut json = base.clone();
     for (ns, name, ty) in aliases {

@@ -1,0 +1,45 @@
+type __woodpecker_action1 = Action;
+
+type __woodpecker_action2 = Action;
+
+type __woodpecker_context1 = {};
+
+type __woodpecker_context2 = {};
+
+type __woodpecker_principal2 = Account;
+
+type __woodpecker_resource1 = Pod;
+
+type __woodpecker_resource2 = Secret;
+
+entity Account = {
+  name: String
+};
+
+entity Pod = {
+  runsAs: String
+};
+
+entity Secret;
+
+entity User;
+
+action "create" appliesTo {
+  principal: [User, Account],
+  resource: [Pod],
+  context: {}
+};
+
+action "read" appliesTo {
+  principal: [User, Account],
+  resource: [Secret],
+  context: {
+    action1: __woodpecker_action1,
+    action2: __woodpecker_action2,
+    context1: __woodpecker_context1,
+    context2: __woodpecker_context2,
+    principal2: __woodpecker_principal2,
+    resource1: __woodpecker_resource1,
+    resource2: __woodpecker_resource2
+  }
+};

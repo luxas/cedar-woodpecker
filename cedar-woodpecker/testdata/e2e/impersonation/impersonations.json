@@ -1,0 +1,7 @@
+{ "impersonations": [ {
+  "name": "create-pod-assumes-account",
+  "principal": ["User"],
+  "sources": [ { "action": "Action::\"create\"", "resource": "Pod" } ],
+  "assume": "Account",
+  "when": "context.assumed.name == context.resource1.runsAs"
+} ] }

@@ -158,6 +158,7 @@
         <span class="cl-dot" style="background:#d29922"></span>Medium
         <span class="cl-dot" style="background:#8b949e"></span>Low</div>
       <div class="cl-row"><b>edge style</b> = live e2e: <span class="cl-line solid"></span>proven&nbsp;(PASS/ISO) &nbsp; <span class="cl-line dashed"></span>SKIP</div>
+      <div class="cl-row"><b>◆ identity node</b> = assume that principal (⟹ Identity) → gain every permission it holds</div>
     </div>
     <div class="hint" id="hint">drag to pan · scroll to zoom · click a node to trace its paths</div>
   </div>
@@ -176,7 +177,7 @@ const GROUP_COLORS = {
   core:"#58a6ff", apps:"#bc8cff", batch:"#39c5cf", autoscaling:"#56d4dd",
   rbac:"#f85149", certificates:"#ff7b72", authorization:"#f85149",
   networking:"#3fb950", discovery:"#2ea043", storage:"#d29922",
-  apiregistration:"#db61a2", flowcontrol:"#e3b341", all:"#f0f6fc",
+  apiregistration:"#db61a2", flowcontrol:"#e3b341", all:"#f0f6fc", identity:"#d2a8ff",
 };
 const SEV_COLOR = {Critical:"#f85149", High:"#f0883e", Medium:"#d29922", Low:"#8b949e"};
 const SEV_RANK = {Critical:4, High:3, Medium:2, Low:1};
@@ -189,16 +190,16 @@ for (const n of DATA.nodes){
   const special = n.resource === "k8s::Resource";
   elements.push({ data:{
     id:n.id, label:n.label, verb:n.verb, group:n.group, resource:n.resource,
-    display:n.display, indeg:n.indeg, outdeg:n.outdeg, deg:deg,
+    display:n.display, indeg:n.indeg, outdeg:n.outdeg, deg:deg, kind:n.kind||"cube",
     size: 26 + Math.min(deg,18)*4.2, color:groupColor(n.group),
-    shape: special ? "star" : "round-rectangle",
+    shape: n.kind==="identity" ? "diamond" : (special ? "star" : "round-rectangle"),
   }});
 }
 for (const e of DATA.edges){
   elements.push({ data:{
     id:"e__"+e.id, source:e.source, target:e.target, name:e.name, title:e.title,
     when:e.when, severity:e.severity, severitySpan:(e.severity_span||[]).join(" / ")||e.severity,
-    status:e.status, statusReason:e.status_reason||"", md:e.md, why:e.why,
+    status:e.status, statusReason:e.status_reason||"", md:e.md, why:e.why, kind:e.kind||"transition",
     color:SEV_COLOR[e.severity]||"#8b949e",
     dash: e.status==="SKIP" ? "6 4" : "none", width: 1.4 + (SEV_RANK[e.severity]||1)*0.7,
   }});
@@ -226,6 +227,8 @@ const cy = cytoscape({
       "line-dash-pattern":[6,4], "opacity":0.78,
     }},
     { selector:'edge[status = "SKIP"]', style:{ "line-style":"dashed" }},
+    { selector:'edge[kind = "identity"]', style:{ "target-arrow-shape":"diamond", "arrow-scale":1.35 }},
+    { selector:'node[kind = "identity"]', style:{ "border-width":2.5, "border-color":"#d2a8ff", "font-weight":"bold" }},
     { selector:".faded", style:{ "opacity":0.07, "text-opacity":0.07 }},
     { selector:".hl", style:{ "opacity":1, "text-opacity":1 }},
     { selector:"node.hl", style:{ "border-width":3, "border-color":"#58a6ff" }},
@@ -336,6 +339,20 @@ function showNode(n, up, down){
     return `<a data-edge="${esc(e.id())}">${dir} <span class="mono">${esc(o.data("label"))}</span>
       <span class="pill ${esc(e.data("severity"))}" style="float:right">${esc(e.data("severity"))}</span></a>`;
   };
+  if (d.kind === "identity") {
+    panel.innerHTML = `
+      <div class="kind">identity · ⟹ assume</div>
+      <h3 class="mono">${esc(d.label)}</h3>
+      <div class="meta"><span class="tag">assumed via ${d.indeg} permission(s)</span></div>
+      <dl>
+        <dt>Identity assumption</dt>
+        <dd>Holding any inbound permission lets a principal <b>act as ${esc(d.resource)}</b> and gain <b>every</b> permission that identity has (KubeHound <code>⟹ Identity</code>).</dd>
+        <dt>Assumed via — these imply it</dt>
+        <dd class="edgelist">${inE.length? inE.map(edgeLink).join("") : '<span class="ar">— none —</span>'}</dd>
+      </dl>`;
+    wireEdgeLinks();
+    return;
+  }
   panel.innerHTML = `
     <div class="kind">permission cube · ${esc(d.group)}</div>
     <h3 class="mono">${esc(d.label)}</h3>
@@ -362,11 +379,12 @@ function showEdge(e){
   const path = e.source().union(e).union(e.target());
   cy.elements().addClass("dim"); path.removeClass("dim").addClass("hl");
   const d=e.data();
+  const isId = d.kind === "identity";
   const why = (d.why||[]).map((u,i)=>`<li><a href="${esc(u)}" target="_blank" rel="noopener noreferrer">source&nbsp;${i+1} ↗</a></li>`).join("");
   const mdName = d.md||"";
   const mdLink = mdName ? `<a href="../transitions/${esc(mdName)}" target="_blank" rel="noopener noreferrer">${esc(mdName)} ↗</a>` : "—";
   panel.innerHTML = `
-    <div class="kind">implication · transition function</div>
+    <div class="kind">${isId ? "identity assumption · ⟹ Identity" : "implication · transition function"}</div>
     <h3>${esc(d.title||d.name)}</h3>
     <div class="meta">
       <span class="pill ${esc(d.severity)}">${esc(d.severitySpan)}</span>
@@ -376,8 +394,9 @@ function showEdge(e){
     <dl>
       <dt>Implication</dt>
       <dd><span class="mono">${esc(e.source().data("label"))}</span>
-          <span class="ar"> ⟹ </span>
-          <span class="mono">${esc(e.target().data("label"))}</span></dd>
+          <span class="ar"> ⟹ ${isId ? "assume " : ""}</span>
+          <span class="mono">${esc(isId ? e.target().data("display") : e.target().data("label"))}</span>
+          ${isId ? `<div class="legend-note" style="margin-top:4px">gain <b>every</b> permission the ${esc(e.target().data("display"))} identity holds</div>` : ""}</dd>
       <dt>Cedar <code>when</code> (the condition under which it holds)</dt>
       <dd><code class="cond">${esc(d.when)}</code>
           <div class="legend-note" style="margin-top:4px"><code>resource</code> = the target cube's resource; <code>resource1</code>/<code>context.resource1</code> = the source cube's resource.</div></dd>
