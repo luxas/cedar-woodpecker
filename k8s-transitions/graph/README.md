@@ -91,3 +91,15 @@ a source cube points to a diamond **identity node** (the assumed principal, e.g.
 identity has. The three — `impersonate serviceaccounts`, `get secrets` (a token
 Secret), and `create pods` (as the SA) — all converge on `assume ServiceAccount`
 and are proven live on kind.
+
+Tracing the identity node shows its three inbound permissions, plus everything
+upstream of `create pods` (each workload controller), since all of them reach
+the ServiceAccount transitively:
+
+![assume ServiceAccount identity node traced, with its three inbound permissions](figures/identity-trace.png)
+
+The `get secrets ⟹ assume ServiceAccount` edge panel shows the binding: the
+Secret must be a service-account token, and the assumed SA is the one its
+`serviceAccountName` names, in the same namespace:
+
+![get secrets to assume ServiceAccount edge detail](figures/identity-edge.png)
