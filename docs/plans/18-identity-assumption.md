@@ -256,7 +256,8 @@ Identity` edge, expressed as sound single-hop transitions.
 - Phase 4: the three k8s mechanisms as catalogue entries (`impersonate-assumes-sa`,
   `read-token-secret-assumes-sa`, `create-pod-assumes-sa`), each `[sound]`, e2e
   on kind, graph (a new `⟹ Identity` edge class), and close `KUBEHOUND-GAP.md`
-  #1/#2.
+  #1/#2. A fourth, `token-request-assumes-sa` (`create serviceaccounts/token` ⟹
+  act as the SA), was added afterwards in the same shape.
 
 ## Deliberately not done (phase 1)
 

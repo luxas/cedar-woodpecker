@@ -6,7 +6,7 @@ mechanisms worth adding as woodpecker transitions.
 
 - Source: `DataDog/KubeHound` @ `ba4cdde2fa17875932c8941c3932da2e1c80eca3`
   (2026-09-14), `docs/reference/attacks/` + `pkg/kubehound/graph/edge/`.
-- Our catalogue: 63 transitions + 3 impersonation definitions / 50 mechanisms in [`transitions/`](transitions/). Identity assumption (plan 18 Layer B) added 2026-10-11.
+- Our catalogue: 63 transitions + 4 impersonation definitions / 50 mechanisms in [`transitions/`](transitions/). Identity assumption (plan 18 Layer B) added 2026-10-11.
 
 KubeHound and this catalogue model different things and overlap in the middle.
 KubeHound is an **attack graph** over a live cluster: its edges include runtime
@@ -32,7 +32,9 @@ transition model does not natively express:
    **DONE** (2026-10-11): [`read-token-secret-assumes-sa`](transitions/read-token-secret-assumes-sa.md)
    (using the new `secrets.serviceAccountName`/`.type` fields), `[sound]` and
    proven live on kind. The `create pods → act as SA` chain is also added as
-   [`create-pod-assumes-sa`](transitions/create-pod-assumes-sa.md).
+   [`create-pod-assumes-sa`](transitions/create-pod-assumes-sa.md), and the mint
+   path `create serviceaccounts/token → act as SA` as
+   [`token-request-assumes-sa`](transitions/token-request-assumes-sa.md).
 3. **`patch pods` → read the pod's mounted Secrets** (`POD_PATCH`) — a verb
    sibling of our `pods/exec` and `pods/ephemeralcontainers` edges.
    **DONE** (2026-10-11): added as
@@ -55,7 +57,7 @@ specific `(action, resource)`. That is not a single `p ⟹ q` transition; see
 | `IDENTITY_IMPERSONATE` | PermissionSet→Identity | **yes** — `impersonate-assumes-sa` (lowering) | **done** |
 | `TOKEN_LIST` | PermissionSet→Identity (`list secrets`) | **yes** — `read-token-secret-assumes-sa` (verb sibling) | **done** |
 | `TOKEN_BRUTEFORCE` | PermissionSet→Identity (`get secrets`) | **yes** — `read-token-secret-assumes-sa` | **done** |
-| `IDENTITY_ASSUME` | Container/Node→Identity (own a token) | conceptually — `serviceaccount-token-is-sa-credential` (mint ⟹ act as SA) | covered (RBAC side); the runtime side is out of scope |
+| `IDENTITY_ASSUME` | Container/Node→Identity (own a token) | **yes** (RBAC side) — `token-request-assumes-sa` (mint a token ⟹ act as SA, lowering) | **done** (RBAC side); the runtime side is out of scope |
 | `PERMISSION_DISCOVER` | Identity→PermissionSet (`get rolebindings`) | n/a | out of scope — reconnaissance (a read, no privilege gain) |
 | `POD_CREATE` | PermissionSet→**Node** | partial — we model the *data* edges (`create pods` ⟹ get secret/configmap/sa/pvc/node, mint SA token) | node *takeover* is escape-mediated → out of scope |
 | `POD_ATTACH` | **Node**→Pod | — | out of scope — runtime (node owns its pods via containerd) |

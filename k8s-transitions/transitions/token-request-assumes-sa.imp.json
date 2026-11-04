@@ -1,0 +1,7 @@
+{ "impersonations": [ {
+  "name": "token-request-assumes-sa",
+  "principal": ["k8s::User"],
+  "sources": [ { "action": "k8s::Action::\"create\"", "resource": "core::serviceaccounts_token" } ],
+  "assume": "k8s::ServiceAccount",
+  "when": "context.assumed.name == context.resource1.name && context.assumed.namespace == context.resource1.namespace"
+} ] }
